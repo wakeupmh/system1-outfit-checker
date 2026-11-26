@@ -1,0 +1,10 @@
+gcp_project    = "my-gcp-project"
+gemini_api_key = "paste-the-AI-Studio-key"
+
+# aws_region            = "us-east-1"
+# gcp_region            = "us-central1"
+# demo_key              = "pick-one-or-leave-unset"
+# instance_type         = "ml.g6.xlarge"
+# enable_gpu            = false
+# decider_url           = "https://a-decider-you-run-elsewhere"
+# frontdoor_concurrency = -1
