@@ -61,7 +61,9 @@ It creates:
   environment, and the service account `outfit-github-deploy` with the roles the stack needs.
 
 Then create the `production` environment in GitHub and copy the outputs into it, plus the
-`GEMINI_API_KEY` secret. The bootstrap state stays in `infra/bootstrap/` on your laptop; keep it, since
+`GEMINI_API_KEY` secret. Last, set the repository variable `DEPLOY_ENABLED` to `true` (Settings >
+Secrets and variables > Actions > Variables). Until then a merge skips the deploy job, so merging before
+the setup does nothing; running the workflow by hand still works. The bootstrap state stays in `infra/bootstrap/` on your laptop; keep it, since
 `terraform -chdir=infra/bootstrap destroy` needs it.
 
 The Google project still needs a billing account linked (Cloud Run requires it), and the AWS account

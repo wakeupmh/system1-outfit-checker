@@ -28,6 +28,8 @@ permissions:
 
 jobs:
   deploy:
+    # Merges deploy only once the setup in docs/ci.md is done and DEPLOY_ENABLED is true.
+    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: production
