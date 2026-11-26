@@ -127,13 +127,18 @@ is scored **alone** against the occasion and the highest wins. The same two look
 5. "Ideal: exactly what this occasion calls for."
 
 Instructions: "How well does the visible outfit suit {occasion}? Judge only the clothes, shoes and
-accessories, not the person." State: "The plan: {occasion}." Each look's request also carries `person`,
-`formality`, `palette` and `shoes`, so the stylist can explain the pick.
+accessories, not the person." State: "The plan: {occasion}."
+
+Each look's `/choose` request carries `fit` **alone**. Time goes by pass through the model: one question is
+one pass and several questions are two, 2.55 s against 4.50 s per look on the presenter's Mac
+(`docs/unknowns.md`, M9). The four facts, `person`, `formality`, `palette` and `shoes`, come from `/facts`
+when they are needed.
 
 Calibration: measured fit levels sit between about 0.9 and 2.3.
 `fit = clamp(round(100 * (level - FIT_LO) / (FIT_HI - FIT_LO)), 0, 100)` with `FIT_LO = 0.8`,
-`FIT_HI = 2.4`. When `person < 0.5`, `fit = 0`. The pick is the highest `level`. `margin` is the winner's
-level minus the runner-up's; `confident` is `margin >= 0.4` (measured margins: 0.32 to 1.41).
+`FIT_HI = 2.4`. The pick is the highest `level`. `margin` is the winner's level minus the runner-up's;
+`confident` is `margin >= 0.4` (measured margins: 0.32 to 1.41). `/choose` does not read `person`, so a
+photo with nobody in it ranks by its fit level alone. `/facts` is what reports `person`.
 
 ### Choice
 
@@ -144,26 +149,46 @@ level minus the runner-up's; `confident` is `margin >= 0.4` (measured margins: 0
   "confident": true,
   "margin": 0.88,
   "looks": [
-    {"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02], "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13}},
-    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05], "facts": {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}}
+    {"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02]},
+    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05]}
   ],
-  "ms": 5012.4,
+  "ms": 2512.4,
   "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"
 }
 ```
 
 `pick` is a 0-based index into `looks`, which keeps the request's order.
 
+### Facts
+
+The four fact questions of a Verdict, answered for each photo in one request, with the state "A webcam photo.":
+
+```json
+{
+  "facts": [
+    {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13},
+    {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}
+  ],
+  "ms": 8430.1,
+  "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"
+}
+```
+
+`facts[i]` belongs to `images[i]`.
+
 ### Routes
 
 - Decider: `POST /invocations` with `{"occasion": "<1 to 120 chars>", "images": [2 or 3 base64 JPEGs]}`
-  returns a Choice. A body with `image` still returns a Verdict. 400 for anything else. The looks go
-  through the engine in one batched call where the engine supports it.
-- Front door: `POST /choose`, demo key, same body, returns the Choice. 503 cold or warming as for `/score`.
+  returns a Choice, and with `{"images": [1 to 3 base64 JPEGs]}` returns Facts. A body with `image` still
+  returns a Verdict. 400 for anything else. The looks go through the engine one at a time, one pass each.
+- Front door: `POST /choose` and `POST /facts`, demo key, same bodies, and 503 cold or warming as for
+  `/score`.
 - Stylist: `POST /style` also accepts `{"choice": <Choice>}` and returns `{"advice": ...}`: 2 to 4 short
-  sentences in Brazilian Portuguese saying why the pick suits the occasion, from the facts only.
-  `{"verdict": ...}` keeps working.
-- `DECIDER_MOCK=1` returns a deterministic Choice built from a hash of each image and the occasion.
+  sentences in Brazilian Portuguese saying why the pick suits the occasion. Each look's `facts` are optional:
+  with them the agent explains from the fits and the facts, without them from the fits and the margin alone,
+  and never from an image. `{"verdict": ...}` keeps working.
+- `DECIDER_MOCK=1` returns a deterministic Choice and Facts built from a hash of each image, and of the
+  occasion for the fit.
 
 ### Page
 
@@ -171,4 +196,6 @@ Two modes on one page: **Termômetro** (the live meter, unchanged state machine)
 In Escolher o look, each of 2 or 3 slots takes a webcam snapshot or a file upload, the occasion comes
 from preset chips or free text, and "Decidir" posts to `/choose`. The result reveals each look's fit
 bar, marks the pick, and shows the margin. When `confident` is false the page says it is a tie and offers
-the stylist as tie-breaker. The UI text is Brazilian Portuguese.
+the stylist as tie-breaker. "Por quê?" and "Pedir desempate ao estilista" first post the same photos to
+`/facts`, show each look's dress code and palette under its card, then post the Choice with those facts to
+the stylist. The UI text is Brazilian Portuguese.
