@@ -54,6 +54,23 @@ frame gives it more image to read (inferred, not measured). The app caps frames 
 
 These are still stock photos. Real webcam photos of the presenter (`--dir`) remain the final check.
 
+### Two real phone photos
+
+Two phone photos sent by the presenter, not committed: an athleisure outfit (track jacket, cap) and a
+casual pastel one (floral jacket, wide trousers). Different people, one photo each, so a first signal only.
+
+| Model | Athleisure | Pastel casual | Order |
+|---|---|---|---|
+| Decider E2B v2, as shot | 1.47 | 1.65 | right, 0.18 apart |
+| Decider E2B v2, `--webcam` | 0.92 | 1.72 | right, 0.80 apart |
+| SigLIP2 base | 2.33 | 1.09 | reversed |
+
+- Through the whole app the meter read 37 and 43, and the facts were right: `athleisure`/`neutral` and
+  `casual`/`pastel`.
+- Real photos landed about one level below the stock styled photos (1.5 to 1.7 against 2.5 to 3.0). With
+  `LEVEL_HI` 3.2 a good real outfit may never pass about 50 on the meter; recalibrate from presenter photos.
+- SigLIP2 reversed the pair, so it is not a fallback for the score.
+
 ## Register
 
 | # | Unknown | Verdict | Evidence |
@@ -63,7 +80,7 @@ These are still stock photos. Real webcam photos of the presenter (`--dir`) rema
 | M3 | Decider E2B v2 fits a 24 GB L4 | INCONCLUSIVE, likely | 10.3 GB bf16 weights, card says one 24 GB GPU. 5.0 GB peak RAM on CPU because Gemma 4 E2B's per-layer embeddings are mostly untouched. Needs a GPU run |
 | M4 | Decider E2B v2 image latency on L4 | INCONCLUSIVE | No GPU or AWS account here. Card: 62 ms per text question on H100. Builder Center: 131 ms for the v1 2B on ml.g6.xlarge, text only |
 | M5 | Scores use the full 0 to 4 range | NOT VERIFIED | Both decision models stay between about 0.2 and 3.3. The page needs a linear stretch |
-| M6 | SigLIP2 in the browser can drive the meter alone | NOT VERIFIED | Ranks styled well, cannot separate no person from plain clothes |
+| M6 | SigLIP2 in the browser can drive the meter alone | NOT VERIFIED | Ranks stock styled photos well, cannot separate no person from plain clothes, and reversed a real pair of phone photos |
 | M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate) |
 | C1 | SageMaker scale-to-zero holds requests while at zero | NOT VERIFIED | "any attempts to invoke the endpoint will produce an error" [docs](https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling-zero-instances.html) |
 | C2 | Scale up from zero is automatic | NOT VERIFIED | Needs a StepScaling policy and a CloudWatch alarm on `NoCapacityInvocationFailures`, plus MinInstanceCount 0. Same docs |
