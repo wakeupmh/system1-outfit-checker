@@ -4,9 +4,12 @@
     python bench/outfit_eval.py decider   [--model StrandsAgents/strands-decider-E2B-gemma4-v2-2611]
     python bench/outfit_eval.py siglip    [--model google/siglip2-base-patch16-224]
 
-Groups in labels.csv: none (no outfit in view), plain (sport or plain basics), styled
-(fashion photos). Pass: mean(none) < mean(plain) < mean(styled) and
-AUC(styled vs the rest) >= 0.85. Prints per-image level (0-4), seconds, and a summary.
+    python bench/outfit_eval.py decider --dir ~/webcam   # your own photos
+
+Groups, lowest first: none (no outfit in view), lounge (pyjamas, gym), plain (basics), styled.
+labels.csv names each image's group. With --dir, the group is the file name up to the first
+underscore, e.g. lounge_1.jpg, plain_1.jpg, styled_1.jpg. Pass: group means rise in that order
+and AUC(styled vs the rest) >= 0.85. Prints per-image level (0-4), seconds, and a summary.
 """
 import argparse, base64, csv, io, json, statistics, sys, time, urllib.request
 from pathlib import Path
@@ -23,6 +26,23 @@ HF_SOURCES = {  # source name -> (dataset, split, image column)
     "fashionpedia": ("detection-datasets/fashionpedia", "val", "image"),
     "deepfashion": ("SaffalPoosh/deepFashion-with-masks", "train", "images"),
 }
+
+
+GROUPS = ("none", "lounge", "plain", "styled")
+
+
+def load_dir(folder):
+    out = []
+    for path in sorted(Path(folder).expanduser().iterdir()):
+        group = path.stem.split("_")[0]
+        if path.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp") or group not in GROUPS:
+            continue
+        im = Image.open(path).convert("RGB")
+        im.thumbnail((512, 512))
+        out.append((path.name, group, im))
+    if not out:
+        sys.exit(f"no images named <group>_*.jpg with group in {GROUPS} under {folder}")
+    return out
 
 
 def load_images(labels):
@@ -103,6 +123,7 @@ def main():
     ap.add_argument("kind", choices=["d1", "decider", "siglip"])
     ap.add_argument("--model")
     ap.add_argument("--labels", default=str(ROOT / "bench" / "labels.csv"))
+    ap.add_argument("--dir", help="folder of your own photos named <group>_*.jpg")
     ap.add_argument("--threads", type=int, help="CPU threads, to estimate smaller machines")
     a = ap.parse_args()
     if a.threads:
@@ -111,7 +132,7 @@ def main():
     default = {"d1": "LiquidAI/d1-2B", "decider": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611",
                "siglip": "google/siglip2-base-patch16-224"}[a.kind]
     model_id = a.model or default
-    images = load_images(a.labels)
+    images = load_dir(a.dir) if a.dir else load_images(a.labels)
     t = time.perf_counter()
     score = {"d1": d1_scorer, "decider": decider_scorer, "siglip": siglip_scorer}[a.kind](model_id)
     print(f"model {model_id}  load {time.perf_counter() - t:.1f}s", flush=True)
@@ -124,7 +145,7 @@ def main():
     means = {g: statistics.mean(v) for g, v in res.items()}
     rest = [s for g, v in res.items() if g != "styled" for s in v]
     a_ = auc(res["styled"], rest)
-    order = [g for g in ("none", "plain", "styled") if g in means]
+    order = [g for g in GROUPS if g in means]
     ok = all(means[x] < means[y] for x, y in zip(order, order[1:])) and a_ >= 0.85
     print("means " + "  ".join(f"{g} {means[g]:.2f}" for g in order)
           + f"  AUC(styled vs rest) {a_:.2f}  median {statistics.median(times):.2f}s/frame"

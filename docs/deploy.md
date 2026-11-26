@@ -118,11 +118,25 @@ What still bills at idle, at list prices not checked in this session:
 
 ## First-run checklist
 
+### Before any AWS spend: does it score your outfits?
+
+Every model result so far comes from curated photos. Check webcam frames of you first, on CPU:
+
+1. Take a few webcam photos of yourself in each of three outfits and name them `lounge_1.jpg`,
+   `plain_1.jpg`, `styled_1.jpg` and so on, in one folder.
+2. `python bench/outfit_eval.py decider --dir <folder>` (downloads about 10 GB once).
+3. Go ahead if it prints PASS with clear gaps between the group means. If not, try
+   `python bench/outfit_eval.py siglip --dir <folder>` before deploying anything.
+
+### On the account
+
 These items from `docs/unknowns.md` need a real account. Record the results there.
 
 - [ ] **C4 quota.** The quota check above returns at least 1 before `make up`.
 - [ ] **M3 GPU fit.** The inference component reaches `InService` and `make status` says `live`. If
       SageMaker reports a memory or GPU error, check the CloudWatch log groups under `/aws/sagemaker/` for the endpoint and inference component.
+      `decider_memory_mb` (8192) reserves host RAM for placement; the weights go to the L4's 24 GB. If the
+      container is killed for host memory, raise it toward the 16 GB host, or use `ml.g5.xlarge`.
 - [ ] **M4 latency.** The `ms` field of `/score` replies on the GPU, and the time the page sees per frame.
 - [ ] **C3 scale from zero.** Time from `make warm` at zero copies to `live`. Time it a second time from a
       `/score` call while cold, which goes through the alarm instead.
