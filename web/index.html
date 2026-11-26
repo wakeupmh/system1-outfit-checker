@@ -1,54 +1,110 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Outfit Checker</title>
+  <title>O look do mozão</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='%23ff90e8' stroke='black' stroke-width='3'/%3E%3Cpath d='M16 24l-7-7a4 4 0 0 1 7-4a4 4 0 0 1 7 4z' fill='black'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Space+Grotesk:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <main class="booth">
-    <section class="frame" id="frame">
-      <div class="window">
-        <video id="video" autoplay playsinline muted></video>
-        <div class="placeholder" id="placeholder">
-          <button id="start" class="btn">♡ Start camera</button>
-          <p>Stand back so your whole outfit is in view.</p>
+<body data-mode="look">
+  <header class="top">
+    <h1 class="logo">o look do <span>mozão</span></h1>
+    <p class="tagline">um modelo de decisão escolhe.<br><b>0 tokens gerados.</b></p>
+    <nav class="tabs" role="tablist">
+      <a class="tab" id="tab-look" role="tab" href="#look">Escolher o look</a>
+      <a class="tab" id="tab-meter" role="tab" href="#termometro">Termômetro</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="mode look" id="mode-look" role="tabpanel" aria-labelledby="tab-look" data-phase="editing">
+      <div class="stage" id="look-stage">
+        <video id="lookcam" autoplay playsinline muted></video>
+        <div class="cam-off" id="cam-off">
+          <button id="cam-start" class="btn btn-pink">Ligar a câmera</button>
+          <p id="cam-msg">A câmera mostra cada look ao vivo.</p>
         </div>
-        <div class="mood" id="mood"></div>
+        <div class="flash" id="flash"></div>
+        <span class="sticker sticker-live" aria-hidden="true">AO VIVO</span>
+        <span class="sticker sticker-occasion" id="stage-occasion" hidden></span>
+        <div class="thinking" id="thinking" aria-live="polite">
+          <b class="thinking-title">PENSANDO<span>…</span></b>
+          <span id="thinking-line">pensando…</span>
+          <b class="thinking-clock" id="thinking-clock">0,0 s</b>
+        </div>
       </div>
-      <h1 class="title"><span class="jp">コーデ判定</span><span class="en">fit check</span></h1>
-      <div class="stickers" id="stickers" aria-hidden="true"></div>
-      <time class="stamp" id="stamp"></time>
+
+      <div class="brief">
+        <h2 class="kicker"><span>1</span> a ocasião</h2>
+        <div class="chips" id="chips"></div>
+        <input id="occasion" class="occasion" type="text" maxlength="120" placeholder="…ou escreva a sua" autocomplete="off" aria-label="Ocasião">
+      </div>
+
+      <div class="slots" id="slots" aria-label="Looks"></div>
+
+      <div class="act">
+        <button id="decide" class="btn btn-decide" disabled>DECIDIR</button>
+        <p class="hint" id="hint" role="status"></p>
+        <div class="verdict" id="verdict" hidden>
+          <div class="margin" id="margin"></div>
+          <div class="verdict-actions">
+            <button id="explain" class="btn btn-yellow"></button>
+            <button id="again" class="btn">Começar de novo</button>
+          </div>
+          <p class="advice bubble" id="look-advice" hidden></p>
+        </div>
+      </div>
+
+      <details class="engine" id="engine">
+        <summary>Por baixo do capô</summary>
+        <div class="engine-body">
+          <dl class="engine-facts">
+            <dt>modelo</dt><dd id="engine-model">–</dd>
+            <dt>tempo</dt><dd id="engine-ms">–</dd>
+            <dt>custo</dt><dd id="engine-pass">–</dd>
+          </dl>
+          <div class="probs" id="engine-probs"></div>
+          <pre id="engine-json">ainda nada por aqui</pre>
+        </div>
+      </details>
     </section>
 
-    <section class="panel">
-      <div class="row">
-        <div>
-          <div class="label">♡ 今日のコーデ</div>
-          <div class="sub">How styled is your outfit today?</div>
+    <section class="mode meter" id="mode-meter" role="tabpanel" aria-labelledby="tab-meter" data-state="off">
+      <div class="stage" id="frame">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="cam-off" id="placeholder">
+          <button id="start" class="btn btn-pink">Ligar a câmera</button>
+          <p>Dá um passo pra trás: o look inteiro tem que aparecer.</p>
         </div>
-        <div class="pct"><span id="pct">--</span><small>%</small></div>
+        <span class="sticker sticker-live" aria-hidden="true">AO VIVO</span>
+        <div class="mood" id="mood"></div>
       </div>
-      <div class="bar"><div class="fill" id="fill"></div></div>
-      <div class="controls">
-        <span class="state" id="state" data-state="off" role="status">off</span>
-        <button id="warm" class="btn small" title="Needs the presenter key" hidden>☆ Warm up</button>
-        <button id="retry" class="btn small" hidden>↻ Retry</button>
-        <button id="resume" class="btn small" hidden>▶ Resume</button>
-        <button id="stop" class="btn small" hidden>■ Stop</button>
-        <button id="styleme" class="btn small" disabled>♡ Style me</button>
-      </div>
-      <p class="advice" id="advice" hidden></p>
-      <div class="foot">
-        <span>An AI estimate of your outfit, not a judgment of you.</span>
-        <span id="status">camera off</span>
+
+      <div class="gauge">
+        <div class="gauge-head">
+          <h2 class="kicker">nível do look agora</h2>
+          <span class="state" id="state" data-state="off" role="status">câmera desligada</span>
+        </div>
+        <div class="pct"><span id="pct">–</span><small>%</small></div>
+        <div class="bar"><div class="fill" id="fill"></div></div>
+        <div class="controls">
+          <button id="warm" class="btn btn-yellow" title="Precisa da chave do apresentador" hidden>Aquecer o modelo</button>
+          <button id="retry" class="btn" hidden>Tentar de novo</button>
+          <button id="resume" class="btn btn-mint" hidden>Continuar</button>
+          <button id="stop" class="btn" hidden>Parar</button>
+          <button id="styleme" class="btn btn-pink" disabled>Me dá uma dica</button>
+        </div>
+        <p class="advice bubble" id="advice" hidden></p>
+        <p class="status" id="status">câmera desligada</p>
       </div>
     </section>
-    <p class="privacy">Frames are scored and never stored. The stylist only sees the scores, never the image.</p>
   </main>
+
+  <footer class="privacy">As fotos são avaliadas e nunca guardadas. O estilista só vê os números, nunca a imagem.</footer>
   <canvas id="canvas" hidden></canvas>
   <script src="config.js"></script>
   <script src="app.js"></script>
