@@ -33,12 +33,33 @@ All four rank the outfits, so photo style does not explain the first result. The
 styled is about 0.6 of a level, which the page must stretch. Webcam frames of one person in three
 outfits remain the final check.
 
+### Webcam-quality proxy
+
+`--webcam` puts each photo whole into a 640x480 frame on a wall-coloured background, then blurs it, dims
+it and saves it as JPEG quality 35. Same models, same labels, 4 CPU threads:
+
+| Model, set | Clean | Webcam-quality | AUC (styled vs rest) |
+|---|---|---|---|
+| Decider E2B v2, same studio | plain 2.02, styled 2.60 | plain 1.77, styled 2.51 | 0.97, one pair swapped |
+| Decider E2B v2, mixed set | none 0.67, plain 1.57, styled 2.95 | none 0.60, plain 1.26, styled 2.60 | 1.00 |
+| SigLIP2 base, same studio | plain 1.28, styled 2.16 | plain 1.27, styled 2.42 | 0.97 |
+| SigLIP2 base, mixed set | none 0.69, plain 0.66, styled 3.02 | none 0.30, plain 0.34, styled 2.89 | 1.00 |
+
+All four pass. Degrading the frames lowers scores a little but keeps plain and styled apart; the
+same-studio gap for the decider grew from 0.58 to 0.74 levels. With the current stretch
+(`LEVEL_LO` 0.5, `LEVEL_HI` 3.2) a plain outfit reads about 47 and a styled one about 74.
+
+Decider took 5.5 to 6.2 s per frame here against 2.6 s on the 512 px images, likely because a 640x480
+frame gives it more image to read (inferred, not measured). The app caps frames at 512 px.
+
+These are still stock photos. Real webcam photos of the presenter (`--dir`) remain the final check.
+
 ## Register
 
 | # | Unknown | Verdict | Evidence |
 |---|---|---|---|
 | M1 | Decider E2B v2 accepts images | VERIFIED | Ran 22 images through `images` field |
-| M2 | Decider E2B v2 judges outfits although v2 is trained on text only (model card) | VERIFIED on both labelled sets, INCONCLUSIVE on webcam frames | Tables above |
+| M2 | Decider E2B v2 judges outfits although v2 is trained on text only (model card) | VERIFIED on both labelled sets and their webcam-quality versions, INCONCLUSIVE on real webcam frames | Tables above |
 | M3 | Decider E2B v2 fits a 24 GB L4 | INCONCLUSIVE, likely | 10.3 GB bf16 weights, card says one 24 GB GPU. 5.0 GB peak RAM on CPU because Gemma 4 E2B's per-layer embeddings are mostly untouched. Needs a GPU run |
 | M4 | Decider E2B v2 image latency on L4 | INCONCLUSIVE | No GPU or AWS account here. Card: 62 ms per text question on H100. Builder Center: 131 ms for the v1 2B on ml.g6.xlarge, text only |
 | M5 | Scores use the full 0 to 4 range | NOT VERIFIED | Both decision models stay between about 0.2 and 3.3. The page needs a linear stretch |
