@@ -1,5 +1,5 @@
 output "frontdoor_url" {
-  value = aws_lambda_function_url.frontdoor.function_url
+  value = trimsuffix(aws_lambda_function_url.frontdoor.function_url, "/")
 }
 
 output "stylist_url" {

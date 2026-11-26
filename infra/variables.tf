@@ -84,7 +84,7 @@ variable "stylist_model" {
 }
 
 variable "hosting_site_id" {
-  description = "Firebase Hosting site id, globally unique. Defaults to <gcp_project>-<name>."
+  description = "Firebase Hosting site id, globally unique. Defaults to <name>-<random hex>, new after each make down."
   type        = string
   default     = null
 }
