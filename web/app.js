@@ -2,7 +2,8 @@
 // Termômetro: webcam -> front door -> decider, off -> starting -> cold -> warming -> live, plus paused and error.
 // Paused stops sending frames, so an idle GPU can scale back to zero.
 // Escolher o look: a reducer over {phase, slots, occasion, choice, facts, advice}; phase is editing -> thinking -> revealed | failed.
-// /choose answers the fit alone, one pass per look. The facts come from /facts when the stylist is asked for.
+// /choose asks each look only for its fit and whether a person is visible. The rest comes from /facts when the
+// stylist is asked for.
 const CFG = window.OUTFIT_CONFIG || null;
 const MAX_SIDE = 512;
 const SMOOTH = 0.2;

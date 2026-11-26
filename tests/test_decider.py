@@ -116,18 +116,21 @@ class RecordingEngine(DeciderEngine):
     def _evaluate(self, state, image_b64, questions):
         self.calls.append((state, image_b64, tuple(questions)))
         if "fit" in questions:
-            return {"fit": {"score": 1.0 + 0.5 * len(self.calls), "probabilities": {}}}
+            answers = {"fit": {"score": 1.0 + 0.5 * len(self.calls), "probabilities": {}}}
+            if "person" in questions:
+                answers["person"] = {"noul": 0.9}
+            return answers
         return {
             "person": {"noul": 0.9}, "formality": {"choice": "casual"},
             "palette": {"choice": "neutral"}, "shoes": {"noul": 0.5},
         }
 
 
-def test_a_look_is_asked_its_fit_alone_in_its_own_pass_and_the_facts_are_a_separate_call():
+def test_a_look_is_asked_its_fit_and_person_together_and_the_facts_are_a_separate_call():
     engine = RecordingEngine()
     choice = run_choose(engine, ChooseRequest("a dinner date", ("A", "B", "C")), threading.Lock())
     assert [lk["level"] for lk in choice["looks"]] == [1.5, 2.0, 2.5] and choice["pick"] == 2
-    assert engine.calls == [("The plan: a dinner date.", image, ("fit",)) for image in "ABC"]
+    assert engine.calls == [("The plan: a dinner date.", image, ("fit", "person")) for image in "ABC"]
 
     engine.calls.clear()
     run_facts(engine, FactsRequest(("A", "B")), threading.Lock())

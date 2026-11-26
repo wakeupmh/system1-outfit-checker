@@ -60,9 +60,12 @@ def test_verdict_shape():
     }
 
 
-def look(level=1.6):
-    """What /choose asks of one look: the fit alone."""
-    return {"fit": {"type": "score", "score": level, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.4, "3": 0.2, "4": 0.1}}}
+def look(level=1.6, person=0.9):
+    """What /choose asks of one look: the fit, and whether a person is visible."""
+    return {
+        "fit": {"type": "score", "score": level, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.4, "3": 0.2, "4": 0.1}},
+        "person": {"type": "noul", "noul": person},
+    }
 
 
 def fact_answers(person=0.9, formality="casual", palette="neutral", shoes=0.5):
@@ -72,13 +75,14 @@ def fact_answers(person=0.9, formality="casual", palette="neutral", shoes=0.5):
     return a
 
 
-def test_a_look_is_asked_its_fit_alone_matching_the_contract():
+def test_a_look_is_asked_its_fit_and_person_matching_the_contract():
     occasion = "a dinner date"
     req = Request.model_validate({"state": look_state(occasion), "images": [], "questions": look_questions(occasion)})
     q = {name: question.normalised() for name, question in req.questions.items()}
-    assert set(q) == {"fit"}, "a second question would cost a second pass through the model per look"
+    assert set(q) == {"fit", "person"}, "several questions are a second pass, so a look is asked no more than these"
     assert q["fit"].kind == "score" and len(q["fit"].options) == 5
     assert "a dinner date" in q["fit"].instructions
+    assert q["person"].kind == "noul" and q["person"].instructions == "Is a person with their clothes visible?"
     assert look_state(occasion) == "The plan: a dinner date."
 
 
@@ -127,10 +131,10 @@ def test_a_tie_picks_the_first_look_and_is_not_confident():
     assert choice["pick"] == 0 and choice["margin"] == 0 and choice["confident"] is False
 
 
-def test_choose_ranks_by_fit_alone_because_it_asks_no_person_question():
-    # The page learns that nobody is in a photo from /facts, which comes after the pick.
-    choice = to_choice("x", [look(2.3), look(1.2)], 1.0, "m")
-    assert choice["pick"] == 0 and choice["looks"][0]["fit"] == 94
+def test_a_look_with_no_person_fits_zero_and_cannot_win_on_level():
+    choice = to_choice("x", [look(2.3, person=0.49), look(1.2)], 1.0, "m")
+    assert choice["looks"][0]["fit"] == 0
+    assert choice["pick"] == 1 and choice["margin"] == 1.2
     assert all(set(lk) == {"fit", "level", "probs"} for lk in choice["looks"])
 
 

@@ -126,7 +126,11 @@ class MockEngine:
         }
 
     def answer_looks(self, occasion: str, images: tuple[str, ...]) -> list[dict]:
-        return [{"fit": _mock_score(_digest(f"{occasion}\n{image}"))} for image in images]
+        looks = []
+        for image in images:
+            h = _digest(image)
+            looks.append({"fit": _mock_score(_digest(f"{occasion}\n{image}")), "person": {"noul": 0.9 + h[5] / 2550}})
+        return looks
 
     def answer_facts(self, images: tuple[str, ...]) -> list[dict]:
         looks = []

@@ -73,9 +73,10 @@ def occasion_fit(occasion: str) -> dict:
 
 
 def look_questions(occasion: str) -> dict:
-    """One look's /choose request: the occasion fit alone. Time goes by pass through the model, so a second
-    question would cost a second pass per look. The facts come from FACT_QUESTIONS when they are needed."""
-    return {"fit": occasion_fit(occasion)}
+    """One look's /choose request: the occasion fit, and `person` so that a photo with nobody in it cannot win.
+    Several questions cost a second pass through the model, whichever and however many they are, so the three
+    other facts come from FACT_QUESTIONS when they are needed."""
+    return {"fit": occasion_fit(occasion), "person": QUESTIONS["person"]}
 
 
 def look_state(occasion: str) -> str:
@@ -104,7 +105,9 @@ def display_score(level: float, person: float) -> int:
     return stretch(level, LEVEL_LO, LEVEL_HI)
 
 
-def display_fit(level: float) -> int:
+def display_fit(level: float, person: float) -> int:
+    if person < PERSON_MIN:
+        return 0
     return stretch(level, FIT_LO, FIT_HI)
 
 
@@ -136,15 +139,17 @@ def to_verdict(answers: dict, ms: float, model: str) -> dict:
 
 
 def to_choice(occasion: str, per_look_answers: list[dict], ms: float, model: str) -> dict:
-    """The highest level wins; a tie goes to the first look. /choose asks no `person` question, so a photo with
-    nobody in it ranks by its level alone."""
-    looks, levels = [], []
+    """The highest level wins and a tie goes to the first look. A look with no person in view ranks as level 0,
+    like its fit, so an empty photo cannot win: asked for its fit alone, a photo with nobody in it scores up to
+    level 2.2 (`docs/unknowns.md`, M11)."""
+    looks, ranks = [], []
     for answers in per_look_answers:
         level, probs = _level_and_probs(answers["fit"])
-        levels.append(level)
-        looks.append({"fit": display_fit(level), "level": round(level, 2), "probs": probs})
-    order = sorted(range(len(levels)), key=lambda i: -levels[i])
-    margin = round(levels[order[0]] - levels[order[1]], 2)
+        person = float(answers["person"]["noul"])
+        looks.append({"fit": display_fit(level, person), "level": round(level, 2), "probs": probs})
+        ranks.append(level if person >= PERSON_MIN else 0.0)
+    order = sorted(range(len(ranks)), key=lambda i: -ranks[i])
+    margin = round(ranks[order[0]] - ranks[order[1]], 2)
     return {
         "occasion": occasion,
         "pick": order[0],

@@ -129,16 +129,18 @@ is scored **alone** against the occasion and the highest wins. The same two look
 Instructions: "How well does the visible outfit suit {occasion}? Judge only the clothes, shoes and
 accessories, not the person." State: "The plan: {occasion}."
 
-Each look's `/choose` request carries `fit` **alone**. Time goes by pass through the model: one question is
-one pass and several questions are two, 2.55 s against 4.50 s per look on the presenter's Mac
-(`docs/unknowns.md`, M9). The four facts, `person`, `formality`, `palette` and `shoes`, come from `/facts`
+Each look's `/choose` request carries `fit` and `person`, nothing else. Time goes by pass through the model:
+one question is one pass and several questions are two, whichever they are. On the presenter's Mac a look
+costs 1.8 s asked for its fit alone, 2.1 s for the fit and `person`, and about 4 s for all five questions
+(`docs/unknowns.md`, M9). The three other facts, `formality`, `palette` and `shoes`, come from `/facts`
 when they are needed.
 
 Calibration: measured fit levels sit between about 0.9 and 2.3.
 `fit = clamp(round(100 * (level - FIT_LO) / (FIT_HI - FIT_LO)), 0, 100)` with `FIT_LO = 0.8`,
-`FIT_HI = 2.4`. The pick is the highest `level`. `margin` is the winner's level minus the runner-up's;
-`confident` is `margin >= 0.4` (measured margins: 0.32 to 1.41). `/choose` does not read `person`, so a
-photo with nobody in it ranks by its fit level alone. `/facts` is what reports `person`.
+`FIT_HI = 2.4`. When `person < 0.5`, `fit = 0`. The pick is the highest `level`. `margin` is the winner's
+level minus the runner-up's; `confident` is `margin >= 0.4` (measured margins: 0.32 to 1.41). A look with no
+person in view ranks as level 0, like its fit. `person` stays in `/choose` for that: asked for its fit
+alone, a photo with nobody in it reaches level 2.2 (`docs/unknowns.md`, M11).
 
 ### Choice
 
@@ -180,7 +182,7 @@ The four fact questions of a Verdict, answered for each photo in one request, wi
 
 - Decider: `POST /invocations` with `{"occasion": "<1 to 120 chars>", "images": [2 or 3 base64 JPEGs]}`
   returns a Choice, and with `{"images": [1 to 3 base64 JPEGs]}` returns Facts. A body with `image` still
-  returns a Verdict. 400 for anything else. The looks go through the engine one at a time, one pass each.
+  returns a Verdict. 400 for anything else. The looks go through the engine one at a time.
 - Front door: `POST /choose` and `POST /facts`, demo key, same bodies, and 503 cold or warming as for
   `/score`.
 - Stylist: `POST /style` also accepts `{"choice": <Choice>}` and returns `{"advice": ...}`: 2 to 4 short
