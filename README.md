@@ -39,8 +39,8 @@ DECIDER_MOCK=0 docker compose -f dev/docker-compose.yml up --build
 ```
 
 Open http://localhost:9000 and press **Start camera**. Browsers only allow the camera on
-`localhost` or HTTPS. The decider listens on 8080 and the stylist on 8081. `web/config.js` points the
-page at them with demo key `dev`. Stop the decider and the page drops to "model asleep"; start it again
+`localhost` or HTTPS. The decider listens on 8080 and the stylist on 8081. The local front door serves
+the page's `config.js` itself, pointing at them with demo key `dev`. Stop the decider and the page drops to "model asleep"; start it again
 and press **Warm up**.
 
 On 4 CPU threads the real model takes about 4.6 s per frame for all five questions, so the meter moves

@@ -1,5 +1,7 @@
 """Local stand-in for the Lambda function URL: calls route() and serves web/ on one port.
 
+web/config.js is a deploy output, so the local page gets its config from this server instead.
+
     DEMO_KEY=dev BACKEND=http DECIDER_URL=http://127.0.0.1:8080 python -m frontdoor.local
 """
 
@@ -33,8 +35,15 @@ class Handler(BaseHTTPRequestHandler):
             status, payload = 502, {"error": "decider call failed"}
         self._send(status, json.dumps(payload).encode(), "application/json")
 
+    def _config(self):
+        config = {"frontdoorUrl": "", "stylistUrl": os.environ.get("STYLIST_URL", "http://127.0.0.1:8081"),
+                  "demoKey": self.demo_key}
+        self._send(200, f"window.OUTFIT_CONFIG = {json.dumps(config)};\n".encode(), "text/javascript")
+
     def _static(self):
         rel = self.path.split("?")[0].lstrip("/") or "index.html"
+        if rel == "config.js":
+            return self._config()
         path = (WEB / rel).resolve()
         if not path.is_relative_to(WEB) or not path.is_file():
             return self._send(404, b"not found", "text/plain")

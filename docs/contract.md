@@ -95,7 +95,7 @@ Env: `GOOGLE_API_KEY`, `GOOGLE_GENAI_USE_ENTERPRISE=0`, `STYLIST_MODEL` (default
 ## Web (`web/`)
 
 Static files. `web/config.js` sets `window.OUTFIT_CONFIG = {frontdoorUrl, stylistUrl, demoKey}`.
-`make up` writes it from Terraform outputs. `dev/` writes the local one.
+`make up` writes it from Terraform outputs and it is gitignored. Locally, `frontdoor/local.py` serves `/config.js` from its own env.
 
 The page is a state machine: `off -> starting -> cold -> warming -> live`, plus `error`.
 In `live` it sends one frame at a time to `POST /score`. In `cold` it shows a "Warm up" button
