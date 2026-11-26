@@ -5,6 +5,7 @@
     python bench/outfit_eval.py siglip    [--model google/siglip2-base-patch16-224]
 
     python bench/outfit_eval.py decider --dir ~/webcam   # your own photos
+    python bench/outfit_eval.py decider --webcam         # stock photos degraded to webcam quality
 
 Groups, lowest first: none (no outfit in view), lounge (pyjamas, gym), plain (basics), styled.
 labels.csv names each image's group. With --dir, the group is the file name up to the first
@@ -43,6 +44,21 @@ def load_dir(folder):
     if not out:
         sys.exit(f"no images named <group>_*.jpg with group in {GROUPS} under {folder}")
     return out
+
+
+def webcam(im):
+    """Degrade a photo toward a laptop webcam frame: the whole photo in a 640x480 frame on a wall-coloured
+    background, soft focus, dim light, heavy JPEG."""
+    from PIL import ImageEnhance, ImageFilter
+    im = im.copy()
+    im.thumbnail((640, 480))
+    frame = Image.new("RGB", (640, 480), (176, 168, 156))
+    frame.paste(im, ((640 - im.width) // 2, (480 - im.height) // 2))
+    im = frame.filter(ImageFilter.GaussianBlur(1.2))
+    im = ImageEnhance.Brightness(im).enhance(0.75)
+    im = ImageEnhance.Color(im).enhance(0.85)
+    buf = io.BytesIO(); im.save(buf, "JPEG", quality=35)
+    return Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
 
 
 def load_images(labels):
@@ -124,6 +140,7 @@ def main():
     ap.add_argument("--model")
     ap.add_argument("--labels", default=str(ROOT / "bench" / "labels.csv"))
     ap.add_argument("--dir", help="folder of your own photos named <group>_*.jpg")
+    ap.add_argument("--webcam", action="store_true", help="degrade images toward webcam frames first")
     ap.add_argument("--threads", type=int, help="CPU threads, to estimate smaller machines")
     a = ap.parse_args()
     if a.threads:
@@ -133,6 +150,8 @@ def main():
                "siglip": "google/siglip2-base-patch16-224"}[a.kind]
     model_id = a.model or default
     images = load_dir(a.dir) if a.dir else load_images(a.labels)
+    if a.webcam:
+        images = [(name, group, webcam(im)) for name, group, im in images]
     t = time.perf_counter()
     score = {"d1": d1_scorer, "decider": decider_scorer, "siglip": siglip_scorer}[a.kind](model_id)
     print(f"model {model_id}  load {time.perf_counter() - t:.1f}s", flush=True)
