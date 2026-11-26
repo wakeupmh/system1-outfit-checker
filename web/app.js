@@ -557,7 +557,7 @@ function renderEngine(m) {
   const c = m.choice;
   $("engine-model").textContent = c.model || "–";
   $("engine-ms").textContent = typeof c.ms === "number" ? `${num(Math.round(c.ms), 0)} ms` : "–";
-  $("engine-pass").textContent = `1 passada por look (${c.looks.length} em lote) · 0 tokens gerados`;
+  $("engine-pass").textContent = `${c.looks.length} looks · 1 passada por look · 0 tokens gerados`;
   const rows = c.looks.map((l, k) => {
     const row = document.createElement("div");
     row.className = "probrow";
