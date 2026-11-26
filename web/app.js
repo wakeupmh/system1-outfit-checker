@@ -111,10 +111,25 @@ async function checkStatus(my) {
   }
 }
 
+// The presenter key starts the GPU. It never ships in config.js, so visitors cannot run up the bill.
+function adminKey() {
+  let key = null;
+  try { key = sessionStorage.getItem("adminKey"); } catch (e) {}
+  if (!key) key = window.prompt("Presenter key to start the model:");
+  if (key) { try { sessionStorage.setItem("adminKey", key); } catch (e) {} }
+  return key;
+}
+
 async function warm() {
+  const key = adminKey();
+  if (!key) return;
   $("warm").disabled = true;
   try {
-    const res = await api("POST", "/warm");
+    const res = await api("POST", "/warm", undefined, { "x-admin-key": key });
+    if (res.status === 401) {
+      try { sessionStorage.removeItem("adminKey"); } catch (e) {}
+      return go("cold", "wrong presenter key");
+    }
     if (res.status !== 202) return go("error", res.body.error || `warm failed (${res.status})`);
     go(res.body.state === "live" ? "live" : "warming");
   } catch (e) {
@@ -145,10 +160,10 @@ async function styleMe() {
   }
 }
 
-async function api(method, path, body) {
+async function api(method, path, body, extraHeaders = {}) {
   const r = await fetch(`${CFG.frontdoorUrl}${path}`, {
     method,
-    headers: { "content-type": "application/json", "x-demo-key": CFG.demoKey },
+    headers: { "content-type": "application/json", "x-demo-key": CFG.demoKey, ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let parsed = {};

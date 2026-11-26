@@ -51,6 +51,17 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   for (let i = 0; i < 50; i++) {
     try { execSync("curl -sf localhost:8080/ping"); break; } catch (e) { await page.waitForTimeout(200); }
   }
+  const publicWarm = execSync("curl -s -o /dev/null -w '%{http_code}' -X POST -H 'x-demo-key: dev' localhost:9000/warm").toString();
+  if (publicWarm !== "401") throw new Error(`/warm with only the public key returned ${publicWarm}`);
+  log("/warm with only the public demo key ->", publicWarm);
+
+  page.once("dialog", (d) => d.accept("wrong"));
+  await page.click("#warm");
+  await page.waitForFunction(() => document.getElementById("status").textContent === "wrong presenter key",
+    null, { timeout: 5000 });
+  log("wrong presenter key -> stays", await state(page));
+
+  page.once("dialog", (d) => d.accept("dev-admin"));
   await page.click("#warm");
   await page.waitForSelector('#state[data-state="live"]', { timeout: 15000 });
   log("after Warm up with decider back:", await state(page));

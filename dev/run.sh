@@ -19,7 +19,7 @@ STYLIST_MOCK=${STYLIST_MOCK:-1} GOOGLE_GENAI_USE_ENTERPRISE=0 \
   "$PY" -m uvicorn stylist.app:app --host 127.0.0.1 --port 8081 &
 pids+=($!)
 
-DEMO_KEY=dev BACKEND=http DECIDER_URL=http://127.0.0.1:8080 PORT=9000 \
+DEMO_KEY=dev ADMIN_KEY=dev-admin BACKEND=http DECIDER_URL=http://127.0.0.1:8080 PORT=9000 \
   "$PY" -m frontdoor.local &
 pids+=($!)
 
