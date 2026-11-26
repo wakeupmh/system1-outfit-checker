@@ -15,7 +15,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from server import QUESTION, LEVELS  # the app's own question
+from decider.questions import OUTFIT as QUESTION
 
 CACHE = ROOT / "bench" / ".images"
 FIRST_ROWS = "https://datasets-server.huggingface.co/first-rows?dataset={}&config=default&split={}"

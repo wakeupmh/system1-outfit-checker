@@ -1,45 +1,59 @@
 # system1-outfit-checker
 
-A real-time webcam "fit check": a photo-booth style page streams camera frames to a
-local server, where a Liquid AI **d1 decision model** rates the outfit in a single forward
-pass (no text generation). The page shows the result as a live 0–100 % meter.
+A real-time webcam "fit check": a photo-booth style page sends camera frames to a decision model,
+which rates the outfit in one forward pass (no text generation). The page shows the result as a live
+0–100 % meter, and a stylist agent turns the result into a few lines of advice.
 
 Inspired by the Fit Check demo in Liquid AI's
 [System One Arcade](https://huggingface.co/spaces/LiquidAI/system-one-arcade)
 ([blog](https://www.liquid.ai/blog/d1-open)). The code, prompt and art here are original.
 
-## How it works
+## Parts
 
-1. `static/app.js` grabs a webcam frame, scales it to ≤512 px, and sends it as JPEG over `/ws`.
-   Only one frame is in flight at a time, so the frame rate matches how fast the model runs.
-2. `server.py` asks d1 one `score` question with 5 ordered levels (from lounge/gym wear up to
-   a striking, deliberate look), using `model.system_one(None, {"outfit": QUESTION}, [image])`.
-3. The level probabilities become an expected level, mapped to 0–100. The page smooths it
-   between frames and picks a caption (いいかも ♡, さいこう！ ✦ …).
+`docs/contract.md` is the spec every part builds against.
 
-The prompt tells the model to judge only the clothes, not the person's body, face or room.
-Edit `QUESTION` / `LEVELS` in `server.py` to change what counts as a good outfit.
+| Dir | Job |
+|---|---|
+| `decider/` | Strands Decider E2B answers five questions about one frame (`/ping`, `/invocations`). `questions.py` holds the questions and the 0–100 calibration |
+| `frontdoor/` | Lambda handler: demo-key auth, `/score`, `/warm`, `/sleep`, `/status`. `local.py` runs it on port 9000 and serves `web/` |
+| `stylist/` | ADK agent on Gemini that turns a verdict's numbers into advice. It never sees the image |
+| `web/` | The page, a state machine `off -> starting -> cold -> warming -> live`, plus `error` |
+| `dev/` | Runs all of it on one machine |
 
-## Run
+## Run locally
+
+Without Docker, from a Python 3.12+ environment:
 
 ```bash
-pip install -r requirements.txt
-python server.py                          # LiquidAI/d1-2B (default), ~4 GB download
-python server.py --model LiquidAI/d1-3B   # the other open d1 vision model
-python server.py --compile                # NVIDIA only: CUDA graphs, faster per-frame
-python server.py --mock                   # no model: fake scores, for working on the UI
+pip install -r decider/requirements.txt -r stylist/requirements.txt
+dev/run.sh                                   # mock decider and stylist
+DECIDER_MOCK=0 dev/run.sh                    # real Decider E2B on CPU (about 10 GB download once)
+STYLIST_MOCK=0 GOOGLE_API_KEY=... dev/run.sh # real Gemini stylist
 ```
 
-Open http://127.0.0.1:7860 and press **Start camera**. Browsers only allow the camera on
-`localhost` or HTTPS, so put a TLS proxy in front if you serve it to other devices.
+With Docker:
 
-Runs on CUDA, Apple Silicon (`mps`) or CPU (slow). Liquid reports d1 at roughly 17–60 ms for
-a 384 px image on an RTX 4090 / M5 Pro.
+```bash
+docker compose -f dev/docker-compose.yml up --build
+DECIDER_MOCK=0 docker compose -f dev/docker-compose.yml up --build
+```
 
-## API
+Open http://localhost:9000 and press **Start camera**. Browsers only allow the camera on
+`localhost` or HTTPS. The decider listens on 8080 and the stylist on 8081. `web/config.js` points the
+page at them with demo key `dev`. Stop the decider and the page drops to "model asleep"; start it again
+and press **Warm up**.
 
-- `GET /info` – model id and level descriptions
-- `POST /score` – `{"image": "<data URL>"}` → `{"score": 0-100, "probs": [...], "ms": ...}`
-- `WS /ws` – send data URLs, receive the same JSON per frame
+On 4 CPU threads the real model takes about 4.6 s per frame for all five questions, so the meter moves
+slowly. A GPU is the fast path.
 
-The d1 weights are under the LFM Open License v1.0 – check its terms for your use.
+## Tests
+
+```bash
+pip install pytest httpx
+pytest
+```
+
+## Benchmark
+
+`bench/outfit_eval.py` scores a labelled image set with the app's own outfit question. See
+`docs/unknowns.md` for results.
