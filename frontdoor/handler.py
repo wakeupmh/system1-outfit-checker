@@ -132,24 +132,34 @@ class HttpBackend:
 
 BACKENDS = {"sagemaker": SageMakerBackend, "http": HttpBackend}
 
+# Each route names the key it needs. The demo key ships in the page; the admin key does not,
+# so only the presenter can start or stop the GPU.
+KEY_HEADERS = {"demo": "x-demo-key", "admin": "x-admin-key"}
+
 ROUTES = {
-    ("POST", "/score"): lambda b, body: b.score(body),
-    ("POST", "/warm"): lambda b, body: (202, {"state": b.warm()}),
-    ("POST", "/sleep"): lambda b, body: (202, {"state": b.sleep()}),
-    ("GET", "/status"): lambda b, body: (200, {"state": b.state()}),
+    ("POST", "/score"): ("demo", lambda b, body: b.score(body)),
+    ("GET", "/status"): ("demo", lambda b, body: (200, {"state": b.state()})),
+    ("POST", "/warm"): ("admin", lambda b, body: (202, {"state": b.warm()})),
+    ("POST", "/sleep"): ("admin", lambda b, body: (202, {"state": b.sleep()})),
 }
 
 
-def route(method: str, path: str, headers: dict, body: bytes, backend, demo_key: str) -> tuple[int, dict]:
-    """`headers` keys are lower case, as Lambda delivers them."""
+def keys_from_env() -> dict:
+    return {"demo": os.environ.get("DEMO_KEY", ""), "admin": os.environ.get("ADMIN_KEY", "")}
+
+
+def route(method: str, path: str, headers: dict, body: bytes, backend, keys: dict) -> tuple[int, dict]:
+    """`headers` keys are lower case, as Lambda delivers them. An empty key locks its routes."""
     if method == "OPTIONS":
         return 204, {}
-    given = headers.get("x-demo-key", "")
-    if not demo_key or not hmac.compare_digest(given.encode(), demo_key.encode()):
-        return 401, {"error": "missing or wrong x-demo-key"}
-    op = ROUTES.get((method, path))
-    if op is None:
+    entry = ROUTES.get((method, path))
+    if entry is None:
         return 404, {"error": f"no route {method} {path}"}
+    role, op = entry
+    header = KEY_HEADERS[role]
+    expected, given = keys.get(role, ""), headers.get(header, "")
+    if not expected or not hmac.compare_digest(given.encode(), expected.encode()):
+        return 401, {"error": f"missing or wrong {header}"}
     return op(backend, body)
 
 
@@ -169,7 +179,7 @@ def handler(event, context):
             event.get("headers") or {},
             raw,
             _backend,
-            os.environ.get("DEMO_KEY", ""),
+            keys_from_env(),
         )
     except Exception as e:
         print(f"front door error: {e!r}")
