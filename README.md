@@ -54,6 +54,9 @@ pytest
 NODE_PATH=$(npm root -g) node dev/e2e.js   # browser check, with dev/run.sh running
 ```
 
+Pull requests run all of this in GitHub Actions, plus the Terraform checks. A merge to `main` deploys to
+both clouds; `docs/ci.md` has the one-time setup and where the credentials go.
+
 ## Benchmark
 
 `bench/outfit_eval.py` scores a labelled image set with the app's own outfit question. See
