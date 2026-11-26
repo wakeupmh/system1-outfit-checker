@@ -17,7 +17,7 @@ Inspired by the Fit Check demo in Liquid AI's
 | `decider/` | Strands Decider E2B answers five questions about one frame (`/ping`, `/invocations`). `questions.py` holds the questions and the 0–100 calibration |
 | `frontdoor/` | Lambda handler: demo-key auth, `/score`, `/warm`, `/sleep`, `/status`. `local.py` runs it on port 9000 and serves `web/` |
 | `stylist/` | ADK agent on Gemini that turns a verdict's numbers into advice. It never sees the image |
-| `web/` | The page, a state machine `off -> starting -> cold -> warming -> live`, plus `error` |
+| `web/` | The page, a state machine `off -> starting -> cold -> warming -> live`, plus `paused` and `error`. It stops sending frames when you press Stop, hide the tab, or after 5 minutes |
 | `dev/` | Runs all of it on one machine |
 
 ## Run locally
@@ -25,7 +25,7 @@ Inspired by the Fit Check demo in Liquid AI's
 Without Docker, from a Python 3.12+ environment:
 
 ```bash
-pip install -r decider/requirements.txt -r stylist/requirements.txt
+pip install -r requirements-dev.txt
 dev/run.sh                                   # mock decider and stylist
 DECIDER_MOCK=0 dev/run.sh                    # real Decider E2B on CPU (about 10 GB download once)
 STYLIST_MOCK=0 GOOGLE_API_KEY=... dev/run.sh # real Gemini stylist
@@ -41,7 +41,7 @@ DECIDER_MOCK=0 docker compose -f dev/docker-compose.yml up --build
 Open http://localhost:9000 and press **Start camera**. Browsers only allow the camera on
 `localhost` or HTTPS. The decider listens on 8080 and the stylist on 8081. The local front door serves
 the page's `config.js` itself, pointing at them with demo key `dev`. Stop the decider and the page drops to "model asleep"; start it again
-and press **Warm up**.
+and press **Warm up** with presenter key `dev-admin`.
 
 On 4 CPU threads the real model takes about 4.6 s per frame for all five questions, so the meter moves
 slowly. A GPU is the fast path.
@@ -49,11 +49,13 @@ slowly. A GPU is the fast path.
 ## Tests
 
 ```bash
-pip install pytest httpx
+pip install -r requirements-dev.txt
 pytest
+NODE_PATH=$(npm root -g) node dev/e2e.js   # browser check, with dev/run.sh running
 ```
 
 ## Benchmark
 
 `bench/outfit_eval.py` scores a labelled image set with the app's own outfit question. See
-`docs/unknowns.md` for results.
+`docs/unknowns.md` for results. To check your own webcam photos, name them `lounge_1.jpg`, `plain_1.jpg`,
+`styled_1.jpg` and so on, and run `python bench/outfit_eval.py decider --dir <folder>`.

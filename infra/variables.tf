@@ -26,7 +26,14 @@ variable "gemini_api_key" {
 }
 
 variable "demo_key" {
-  description = "Value of the x-demo-key header. Generated when null."
+  description = "Value of the x-demo-key header for /score and /status. It ships in the page. Generated when null."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "admin_key" {
+  description = "Value of the x-admin-key header for /warm and /sleep. Never ships in the page. Generated when null."
   type        = string
   default     = null
   sensitive   = true

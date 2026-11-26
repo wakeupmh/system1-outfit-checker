@@ -51,7 +51,8 @@ gitignored.
 |---|---|---|
 | `aws_region` | `us-east-1` | Where the GPU runs. `ml.g6.xlarge` costs the same in `us-west-2` |
 | `gcp_region` | `us-central1` | Cloud Run and Artifact Registry |
-| `demo_key` | generated | Value of the `x-demo-key` header. It ships inside `web/config.js`, so it only keeps out casual callers |
+| `demo_key` | generated | Value of the `x-demo-key` header for `/score` and `/status`. It ships inside `web/config.js`, so it only keeps out casual callers |
+| `admin_key` | generated | Value of the `x-admin-key` header for `/warm` and `/sleep`. Never ships in the page. Read it with `terraform -chdir=infra output -raw admin_key` |
 | `enable_gpu` | `true` | `false` skips SageMaker. The front door then calls `decider_url` |
 | `instance_type` | `ml.g6.xlarge` | |
 | `frontdoor_concurrency` | `4` | Caps Lambda cost. Set `-1` if the account's concurrency limit is 10, which rejects any reservation |
@@ -64,7 +65,7 @@ To build the decider on another base image, run `make up DECIDER_BASE=<image>`.
 | Command | Does |
 |---|---|
 | `make up` | Creates the image repos, pushes the decider to ECR, builds the stylist with Cloud Build, applies everything, writes `web/config.js` and deploys the page. Safe to rerun: unchanged images are not rebuilt |
-| `make warm` | Sets the decider to one copy. Returns 202 `{"state": "warming"}` |
+| `make warm` | Sets the decider to one copy with the admin key. Returns 202 `{"state": "warming"}` |
 | `make status` | Prints `cold`, `warming` or `live` |
 | `make sleep` | Sets the decider to zero copies. The GPU instance goes away |
 | `make down` | Deletes every resource on both clouds, image repos included |
@@ -77,13 +78,11 @@ To build the decider on another base image, run `make up DECIDER_BASE=<image>`.
 ## Cold start
 
 The decider scales to zero. At zero, SageMaker rejects every request and the front door answers
-`503 {"state": "cold"}`. Two things start it:
+`503 {"state": "cold"}`. Only `POST /warm` with the admin key starts it: `make warm`, or the page's
+"Warm up" button, which asks for the presenter key once per tab. Visitors only have the demo key, so they
+cannot start the GPU, and a cold `/score` does not wake it.
 
-- `POST /warm`, which the page's "Warm up" button and `make warm` call.
-- Any `/score` call while cold. That raises the `NoCapacityInvocationFailures` alarm, and a step scaling
-  policy adds a copy within about a minute of the alarm.
-
-Either way SageMaker has to start a GPU instance, pull the image and download about 10 GB of weights from
+SageMaker has to start a GPU instance, pull the image and download about 10 GB of weights from
 Hugging Face. AWS says this takes several minutes. Its health check allows 15 minutes.
 
 A target tracking policy removes the copy after a stretch with no traffic. Application Auto Scaling's
@@ -93,6 +92,9 @@ per extra half hour in us-east-1. This is not measured yet; see the checklist.
 
 **Before a talk:** run `make warm` 20 minutes ahead and `make status` until it says `live`. Then open the
 page so frames keep the copy busy, or run `make warm` again close to the start. Run `make sleep` after.
+
+The page stops sending frames on Stop, when its tab is hidden, and after 5 minutes live, so a forgotten tab
+does not keep the copy busy. Scale-in then takes it back to zero.
 
 `make up` itself creates the endpoint with one live instance, so the GPU bills from the end of `make up`
 until the copy scales in or you run `make sleep`.
@@ -112,20 +114,34 @@ What still bills at idle, at list prices not checked in this session:
   last 3 images.
 - Artifact Registry storage past the free 0.5 GB, about $0.10 per GB-month.
 - Secret Manager, $0.06 per secret version per month past the free 6.
-- CloudWatch, $0.10 per month for the scale-out alarm, plus log storage kept 7 days.
+- CloudWatch log storage, kept 7 days. Application Auto Scaling's own scale-in alarms are free.
 
 `make down` removes all of these.
 
 ## First-run checklist
+
+### Before any AWS spend: does it score your outfits?
+
+Every model result so far comes from curated photos. Check webcam frames of you first, on CPU:
+
+1. Take a few webcam photos of yourself in each of three outfits and name them `lounge_1.jpg`,
+   `plain_1.jpg`, `styled_1.jpg` and so on, in one folder.
+2. `python bench/outfit_eval.py decider --dir <folder>` (downloads about 10 GB once).
+3. Go ahead if it prints PASS with clear gaps between the group means. If not, try
+   `python bench/outfit_eval.py siglip --dir <folder>` before deploying anything.
+
+### On the account
 
 These items from `docs/unknowns.md` need a real account. Record the results there.
 
 - [ ] **C4 quota.** The quota check above returns at least 1 before `make up`.
 - [ ] **M3 GPU fit.** The inference component reaches `InService` and `make status` says `live`. If
       SageMaker reports a memory or GPU error, check the CloudWatch log groups under `/aws/sagemaker/` for the endpoint and inference component.
+      `decider_memory_mb` (8192) reserves host RAM for placement; the weights go to the L4's 24 GB. If the
+      container is killed for host memory, raise it toward the 16 GB host, or use `ml.g5.xlarge`.
 - [ ] **M4 latency.** The `ms` field of `/score` replies on the GPU, and the time the page sees per frame.
-- [ ] **C3 scale from zero.** Time from `make warm` at zero copies to `live`. Time it a second time from a
-      `/score` call while cold, which goes through the alarm instead.
+- [ ] **C3 scale from zero.** Time from `make warm` at zero copies to `live`. Also check that a `/score`
+      call while cold leaves `make status` at `cold`.
 - [ ] **Scale in.** How long an idle copy lives before `make status` says `cold`.
 - [ ] **C8 function URL.** A browser call from the hosting URL succeeds, so both Lambda permissions are in
       place.

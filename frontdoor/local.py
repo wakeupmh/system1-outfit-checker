@@ -14,7 +14,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from frontdoor.handler import BACKENDS, ROUTES, route
+from frontdoor.handler import BACKENDS, ROUTES, keys_from_env, route
 
 WEB = Path(os.environ.get("WEB_DIR", Path(__file__).resolve().parent.parent / "web")).resolve()
 API_PATHS = {path for _, path in ROUTES}
@@ -22,14 +22,14 @@ API_PATHS = {path for _, path in ROUTES}
 
 class Handler(BaseHTTPRequestHandler):
     backend = None
-    demo_key = ""
+    keys: dict = {}
 
     def _api(self, method: str):
         length = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(length) if length else b""
         headers = {k.lower(): v for k, v in self.headers.items()}
         try:
-            status, payload = route(method, self.path.split("?")[0], headers, body, self.backend, self.demo_key)
+            status, payload = route(method, self.path.split("?")[0], headers, body, self.backend, self.keys)
         except Exception as e:
             print(f"front door error: {e!r}", file=sys.stderr)
             status, payload = 502, {"error": "decider call failed"}
@@ -37,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _config(self):
         config = {"frontdoorUrl": "", "stylistUrl": os.environ.get("STYLIST_URL", "http://127.0.0.1:8081"),
-                  "demoKey": self.demo_key}
+                  "demoKey": self.keys["demo"]}
         self._send(200, f"window.OUTFIT_CONFIG = {json.dumps(config)};\n".encode(), "text/javascript")
 
     def _static(self):
@@ -72,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     Handler.backend = BACKENDS[os.environ.get("BACKEND", "http")].from_env()
-    Handler.demo_key = os.environ.get("DEMO_KEY", "")
+    Handler.keys = keys_from_env()
     port = int(os.environ.get("PORT", "9000"))
     print(f"front door on http://127.0.0.1:{port} serving {WEB}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

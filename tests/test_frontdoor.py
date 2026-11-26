@@ -10,7 +10,9 @@ from frontdoor import handler as fd
 from frontdoor.handler import HttpBackend, SageMakerBackend, route
 
 KEY = "secret"
-AUTH = {"x-demo-key": KEY}
+ADMIN = "boss"
+KEYS = {"demo": KEY, "admin": ADMIN}
+AUTH = {"x-demo-key": KEY, "x-admin-key": ADMIN}
 VERDICT = {"score": 72, "level": 2.44, "probs": [0.01, 0.08, 0.4, 0.38, 0.13],
            "facts": {"person": 0.97, "formality": "smart_casual", "palette": "neutral", "shoes": 0.91},
            "ms": 143.2, "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"}
@@ -52,15 +54,23 @@ def sagemaker(result=VERDICT, current=1, desired=1):
 
 
 def call(backend, method, path, body=b"", headers=AUTH):
-    return route(method, path, headers, body, backend, KEY)
+    return route(method, path, headers, body, backend, KEYS)
 
 
-@pytest.mark.parametrize("method,path", [("POST", "/score"), ("POST", "/warm"), ("POST", "/sleep"), ("GET", "/status")])
-@pytest.mark.parametrize("headers", [{}, {"x-demo-key": "wrong"}])
-def test_every_route_needs_the_demo_key(method, path, headers):
+@pytest.mark.parametrize("method,path", [("POST", "/score"), ("GET", "/status")])
+@pytest.mark.parametrize("headers", [{}, {"x-demo-key": "wrong"}, {"x-admin-key": ADMIN}])
+def test_scoring_routes_need_the_demo_key(method, path, headers):
     backend = sagemaker()
     assert call(backend, method, path, b"{}", headers)[0] == 401
-    assert backend.runtime.calls == [] and backend.control.updates == []
+    assert backend.runtime.calls == []
+
+
+@pytest.mark.parametrize("path", ["/warm", "/sleep"])
+@pytest.mark.parametrize("headers", [{}, {"x-demo-key": KEY}, {"x-demo-key": KEY, "x-admin-key": "wrong"}])
+def test_the_public_demo_key_cannot_start_or_stop_the_gpu(path, headers):
+    backend = sagemaker(current=0, desired=0)
+    assert call(backend, "POST", path, b"", headers)[0] == 401
+    assert backend.control.updates == []
 
 
 def test_options_and_unknown_routes():
@@ -68,8 +78,9 @@ def test_options_and_unknown_routes():
     assert call(sagemaker(), "GET", "/nope")[0] == 404
 
 
-def test_an_unset_demo_key_locks_everything():
-    assert route("GET", "/status", {"x-demo-key": ""}, b"", sagemaker(), "")[0] == 401
+def test_unset_keys_lock_their_routes():
+    assert route("GET", "/status", {"x-demo-key": ""}, b"", sagemaker(), {"demo": "", "admin": ""})[0] == 401
+    assert route("POST", "/warm", {"x-admin-key": ""}, b"", sagemaker(), {"demo": KEY, "admin": ""})[0] == 401
 
 
 def test_score_passes_the_body_to_the_inference_component_and_returns_the_verdict():
@@ -113,6 +124,7 @@ def test_sleep_sets_zero_copies():
 
 def test_lambda_handler_speaks_payload_2(monkeypatch):
     monkeypatch.setenv("DEMO_KEY", KEY)
+    monkeypatch.setenv("ADMIN_KEY", ADMIN)
     monkeypatch.setattr(fd, "_backend", sagemaker())
     event = {
         "rawPath": "/score",
@@ -128,6 +140,7 @@ def test_lambda_handler_speaks_payload_2(monkeypatch):
 
 def test_lambda_handler_turns_backend_failures_into_502(monkeypatch):
     monkeypatch.setenv("DEMO_KEY", KEY)
+    monkeypatch.setenv("ADMIN_KEY", ADMIN)
     boom = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "InvokeEndpoint")
     monkeypatch.setattr(fd, "_backend", sagemaker(boom))
     event = {"rawPath": "/score", "headers": AUTH, "requestContext": {"http": {"method": "POST"}}, "body": "{}"}

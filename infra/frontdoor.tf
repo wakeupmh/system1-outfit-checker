@@ -70,6 +70,7 @@ resource "aws_lambda_function" "frontdoor" {
   environment {
     variables = {
       DEMO_KEY            = local.demo_key
+      ADMIN_KEY           = local.admin_key
       BACKEND             = var.enable_gpu ? "sagemaker" : "http"
       ENDPOINT_NAME       = var.enable_gpu ? aws_sagemaker_endpoint.decider[0].name : ""
       INFERENCE_COMPONENT = var.enable_gpu ? aws_sagemaker_inference_component.decider[0].name : ""
@@ -90,7 +91,7 @@ resource "aws_lambda_function_url" "frontdoor" {
   cors {
     allow_origins = local.allowed_origins
     allow_methods = ["GET", "POST"]
-    allow_headers = ["content-type", "x-demo-key"]
+    allow_headers = ["content-type", "x-demo-key", "x-admin-key"]
     max_age       = 300
   }
 }

@@ -1,9 +1,11 @@
 // Webcam -> front door -> decider, as a state machine:
-// off -> starting -> cold -> warming -> live, plus error.
+// off -> starting -> cold -> warming -> live, plus paused and error.
+// Paused stops sending frames, so an idle GPU can scale back to zero.
 const CFG = window.OUTFIT_CONFIG || null;
 const MAX_SIDE = 512;
 const SMOOTH = 0.2;
 const POLL_MS = 5000;
+const LIVE_LIMIT_MS = 5 * 60 * 1000;
 const MOODS = [
   [85, "さいこう！ ✦"],
   [65, "いいかも ♡"],
@@ -16,6 +18,7 @@ const LABELS = {
   cold: "model asleep",
   warming: "warming up…",
   live: "live",
+  paused: "paused",
   error: "error",
 };
 
@@ -25,7 +28,11 @@ let state = "off", epoch = 0;
 let raw = null, shown = 0, lastVerdict = null;
 
 const ENTER = {
-  off() {},
+  off() {
+    if (video.srcObject) video.srcObject.getTracks().forEach((t) => t.stop());
+    video.srcObject = null;
+    $("placeholder").hidden = false;
+  },
   async starting(my) {
     try {
       if (!video.srcObject) {
@@ -48,7 +55,9 @@ const ENTER = {
     }
   },
   async live(my) {
+    const until = Date.now() + LIVE_LIMIT_MS;
     while (my === epoch) {
+      if (Date.now() > until) return go("paused", "paused after 5 minutes to save GPU time");
       const frame = grab();
       if (!frame) { await sleep(100); continue; }
       let res;
@@ -71,6 +80,7 @@ const ENTER = {
       }
     }
   },
+  paused() {},
   error() {},
 };
 
@@ -84,6 +94,8 @@ function go(next, detail) {
   document.body.dataset.state = next;
   $("warm").hidden = next !== "cold";
   $("retry").hidden = next !== "error";
+  $("resume").hidden = next !== "paused";
+  $("stop").hidden = next === "off";
   if (next !== "live") $("status").textContent = detail || LABELS[next];
   ENTER[next](my);
 }
@@ -99,10 +111,25 @@ async function checkStatus(my) {
   }
 }
 
+// The presenter key starts the GPU. It never ships in config.js, so visitors cannot run up the bill.
+function adminKey() {
+  let key = null;
+  try { key = sessionStorage.getItem("adminKey"); } catch (e) {}
+  if (!key) key = window.prompt("Presenter key to start the model:");
+  if (key) { try { sessionStorage.setItem("adminKey", key); } catch (e) {} }
+  return key;
+}
+
 async function warm() {
+  const key = adminKey();
+  if (!key) return;
   $("warm").disabled = true;
   try {
-    const res = await api("POST", "/warm");
+    const res = await api("POST", "/warm", undefined, { "x-admin-key": key });
+    if (res.status === 401) {
+      try { sessionStorage.removeItem("adminKey"); } catch (e) {}
+      return go("cold", "wrong presenter key");
+    }
     if (res.status !== 202) return go("error", res.body.error || `warm failed (${res.status})`);
     go(res.body.state === "live" ? "live" : "warming");
   } catch (e) {
@@ -133,10 +160,10 @@ async function styleMe() {
   }
 }
 
-async function api(method, path, body) {
+async function api(method, path, body, extraHeaders = {}) {
   const r = await fetch(`${CFG.frontdoorUrl}${path}`, {
     method,
-    headers: { "content-type": "application/json", "x-demo-key": CFG.demoKey },
+    headers: { "content-type": "application/json", "x-demo-key": CFG.demoKey, ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let parsed = {};
@@ -197,7 +224,12 @@ $("stamp").textContent = new Date().toLocaleDateString("ja-JP");
 $("start").addEventListener("click", () => go("starting"));
 $("warm").addEventListener("click", warm);
 $("retry").addEventListener("click", () => go(video.srcObject ? "starting" : "off"));
+$("resume").addEventListener("click", () => go("starting"));
+$("stop").addEventListener("click", () => go("off"));
 $("styleme").addEventListener("click", styleMe);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && (state === "live" || state === "warming")) go("paused", "paused while the tab was hidden");
+});
 requestAnimationFrame(tick);
 if (CFG) go("off");
 else go("error", "missing config.js");

@@ -51,8 +51,41 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   for (let i = 0; i < 50; i++) {
     try { execSync("curl -sf localhost:8080/ping"); break; } catch (e) { await page.waitForTimeout(200); }
   }
+  const publicWarm = execSync("curl -s -o /dev/null -w '%{http_code}' -X POST -H 'x-demo-key: dev' localhost:9000/warm").toString();
+  if (publicWarm !== "401") throw new Error(`/warm with only the public key returned ${publicWarm}`);
+  log("/warm with only the public demo key ->", publicWarm);
+
+  page.once("dialog", (d) => d.accept("wrong"));
+  await page.click("#warm");
+  await page.waitForFunction(() => document.getElementById("status").textContent === "wrong presenter key",
+    null, { timeout: 5000 });
+  log("wrong presenter key -> stays", await state(page));
+
+  page.once("dialog", (d) => d.accept("dev-admin"));
   await page.click("#warm");
   await page.waitForSelector('#state[data-state="live"]', { timeout: 15000 });
   log("after Warm up with decider back:", await state(page));
+
+  let scores = 0;
+  page.on("request", (r) => { if (r.url().endsWith("/score")) scores++; });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForSelector('#state[data-state="paused"]', { timeout: 5000 });
+  await page.waitForTimeout(300);
+  const before = scores;
+  await page.waitForTimeout(1500);
+  if (scores !== before) throw new Error(`frames sent while paused: ${scores - before}`);
+  log("tab hidden -> paused, no frames sent in 1.5 s");
+  await page.evaluate(() => { delete document.hidden; });
+
+  await page.click("#resume");
+  await page.waitForSelector('#state[data-state="live"]', { timeout: 15000 });
+  await page.click("#stop");
+  await page.waitForSelector('#state[data-state="off"]', { timeout: 5000 });
+  const tracks = await page.evaluate(() => !!document.getElementById("video").srcObject);
+  if (tracks) throw new Error("camera still on after Stop");
+  log("Resume -> live, Stop -> off with camera released");
   await browser.close();
 })().catch((e) => { console.error("FAIL", e); process.exit(1); });

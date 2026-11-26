@@ -22,6 +22,7 @@ services:
     command: python -m frontdoor.local
     environment:
       DEMO_KEY: dev
+      ADMIN_KEY: dev-admin
       BACKEND: http
       DECIDER_URL: http://decider:8080
       PORT: "9000"
