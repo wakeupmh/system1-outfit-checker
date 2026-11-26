@@ -16,6 +16,13 @@ AUTH = {"x-demo-key": KEY, "x-admin-key": ADMIN}
 VERDICT = {"score": 72, "level": 2.44, "probs": [0.01, 0.08, 0.4, 0.38, 0.13],
            "facts": {"person": 0.97, "formality": "smart_casual", "palette": "neutral", "shoes": 0.91},
            "ms": 143.2, "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"}
+CHOICE = {"occasion": "jantar romântico", "pick": 1, "confident": True, "margin": 0.88,
+          "looks": [{"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02],
+                     "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13}},
+                    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05],
+                     "facts": {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}}],
+          "ms": 5012.4, "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"}
+CHOOSE_BODY = json.dumps({"occasion": "jantar romântico", "images": ["a", "b"]}).encode()
 NO_CAPACITY = ClientError(
     {"Error": {"Code": "ValidationError", "Message": "Inference Component has no capacity to process this request. "
                "ApplicationAutoScaling may be in-progress (if configured) or try to increase the capacity by "
@@ -57,7 +64,7 @@ def call(backend, method, path, body=b"", headers=AUTH):
     return route(method, path, headers, body, backend, KEYS)
 
 
-@pytest.mark.parametrize("method,path", [("POST", "/score"), ("GET", "/status")])
+@pytest.mark.parametrize("method,path", [("POST", "/score"), ("POST", "/choose"), ("GET", "/status")])
 @pytest.mark.parametrize("headers", [{}, {"x-demo-key": "wrong"}, {"x-admin-key": ADMIN}])
 def test_scoring_routes_need_the_demo_key(method, path, headers):
     backend = sagemaker()
@@ -91,15 +98,24 @@ def test_score_passes_the_body_to_the_inference_component_and_returns_the_verdic
     assert kw["EndpointName"] == "ep" and kw["InferenceComponentName"] == "ic" and kw["Body"] == body
 
 
+def test_choose_passes_the_body_to_the_inference_component_and_returns_the_choice():
+    backend = sagemaker(CHOICE)
+    assert call(backend, "POST", "/choose", CHOOSE_BODY) == (200, CHOICE)
+    (kw,) = backend.runtime.calls
+    assert kw["EndpointName"] == "ep" and kw["InferenceComponentName"] == "ic" and kw["Body"] == CHOOSE_BODY
+
+
+@pytest.mark.parametrize("path", ["/score", "/choose"])
 @pytest.mark.parametrize("current,desired,state", [(0, 0, "cold"), (0, 1, "warming")])
-def test_score_without_capacity_is_503_with_the_component_state(current, desired, state):
-    assert call(sagemaker(NO_CAPACITY, current, desired), "POST", "/score", b"{}") == (503, {"state": state})
+def test_decider_calls_without_capacity_are_503_with_the_component_state(path, current, desired, state):
+    assert call(sagemaker(NO_CAPACITY, current, desired), "POST", path, b"{}") == (503, {"state": state})
 
 
-def test_score_maps_a_decider_400_through():
+@pytest.mark.parametrize("path", ["/score", "/choose"])
+def test_decider_calls_map_a_decider_400_through(path):
     err = ClientError({"Error": {"Code": "ModelError", "Message": "not an image"}, "OriginalStatusCode": 400},
                       "InvokeEndpoint")
-    status, body = call(sagemaker(err), "POST", "/score", b"{}")
+    status, body = call(sagemaker(err), "POST", path, b"{}")
     assert status == 400
 
 
@@ -149,7 +165,7 @@ def test_lambda_handler_turns_backend_failures_into_502(monkeypatch):
 
 @pytest.fixture
 def fake_decider():
-    replies = {"ping": 200}
+    replies = {"ping": 200, "invocations": (200, VERDICT), "bodies": []}
 
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -157,10 +173,11 @@ def fake_decider():
             self.end_headers()
 
         def do_POST(self):
-            self.rfile.read(int(self.headers["content-length"]))
-            self.send_response(200)
+            replies["bodies"].append(self.rfile.read(int(self.headers["content-length"])))
+            status, payload = replies["invocations"]
+            self.send_response(status)
             self.end_headers()
-            self.wfile.write(json.dumps(VERDICT).encode())
+            self.wfile.write(json.dumps(payload).encode())
 
         def log_message(self, *a):
             pass
@@ -180,8 +197,22 @@ def test_http_backend_is_live_when_the_decider_pings_200(fake_decider):
     assert call(backend, "GET", "/status") == (200, {"state": "warming"})
 
 
+def test_http_backend_passes_choose_through_to_the_decider(fake_decider):
+    url, replies = fake_decider
+    replies["invocations"] = (200, CHOICE)
+    assert call(HttpBackend(url), "POST", "/choose", CHOOSE_BODY) == (200, CHOICE)
+    assert replies["bodies"] == [CHOOSE_BODY]
+
+
+def test_http_backend_maps_a_loading_decider_to_warming(fake_decider):
+    url, replies = fake_decider
+    replies["invocations"] = (503, {"error": "model not loaded"})
+    assert call(HttpBackend(url), "POST", "/choose", CHOOSE_BODY) == (503, {"state": "warming"})
+
+
 def test_http_backend_reports_cold_when_the_decider_is_down():
     backend = HttpBackend("http://127.0.0.1:9")
     assert call(backend, "GET", "/status") == (200, {"state": "cold"})
     assert call(backend, "POST", "/score", b"{}") == (503, {"state": "cold"})
+    assert call(backend, "POST", "/choose", CHOOSE_BODY) == (503, {"state": "cold"})
     assert call(backend, "POST", "/warm")[0] == 202

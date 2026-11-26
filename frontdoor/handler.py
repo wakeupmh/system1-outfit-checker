@@ -65,7 +65,7 @@ class SageMakerBackend:
             self._set_copies(0)
         return COLD
 
-    def score(self, body: bytes) -> tuple[int, dict]:
+    def invoke(self, body: bytes) -> tuple[int, dict]:
         from botocore.exceptions import ClientError
 
         try:
@@ -120,7 +120,7 @@ class HttpBackend:
     def sleep(self) -> str:
         return self.state()
 
-    def score(self, body: bytes) -> tuple[int, dict]:
+    def invoke(self, body: bytes) -> tuple[int, dict]:
         try:
             status, data = self._call("/invocations", body, timeout=70)
         except OSError:
@@ -137,7 +137,8 @@ BACKENDS = {"sagemaker": SageMakerBackend, "http": HttpBackend}
 KEY_HEADERS = {"demo": "x-demo-key", "admin": "x-admin-key"}
 
 ROUTES = {
-    ("POST", "/score"): ("demo", lambda b, body: b.score(body)),
+    ("POST", "/score"): ("demo", lambda b, body: b.invoke(body)),
+    ("POST", "/choose"): ("demo", lambda b, body: b.invoke(body)),
     ("GET", "/status"): ("demo", lambda b, body: (200, {"state": b.state()})),
     ("POST", "/warm"): ("admin", lambda b, body: (202, {"state": b.warm()})),
     ("POST", "/sleep"): ("admin", lambda b, body: (202, {"state": b.sleep()})),
