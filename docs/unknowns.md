@@ -89,35 +89,46 @@ more cores, or Apple MPS (now picked automatically), should do better. The Mac i
 
 MacBook Air (Mac16,12), Apple M4 with 4 performance and 6 efficiency cores, 16 GB of memory, macOS 26.6.2.
 Python 3.14.6, torch 2.15.0, strands-decider 0.4.0. PyTorch picks `mps` by itself and reports a
-`recommended_max_memory()` of 12.71 GB. `dev/rehearse.js` against `DECIDER_MOCK=0 dev/run.sh`, stock trio:
+`recommended_max_memory()` of 12.71 GB.
 
-| Occasion | Pick | Fits (tank / blazer / dress) | Margin | Model time | In the browser |
+`dev/rehearse.js` against `DECIDER_MOCK=0 dev/run.sh`, stock trio, before and after `/choose` went from five
+questions per look to the fit and `person`:
+
+| Occasion | Pick | Fits (tank / blazer / dress) | Margin | In the browser, 5 questions | In the browser, fit and person |
 |---|---|---|---|---|---|
-| Jantar romântico | blazer | 31 / 100 / 62 | 0.81 | 48.9 s | 49.6 s, the first decision after the load |
-| Corrida no parque | plain tank | 58 / 0 / 0 | 0.94 | 12.6 s | 14.0 s |
+| Jantar romântico | blazer | 31 / 100 / 62 | 0.81 | 49.6 s, the first decision after the load | 18.4 s, also the first |
+| Corrida no parque | plain tank | 58 / 0 / 0 | 0.94 | 14.0 s | 7.8 s |
 
-`REHEARSAL OK`. Same picks as on CPU, fits within 3 points, margins within 0.03. Through the front door with
-`curl` on the same load, 3 runs each: 3 looks 12.6 to 15.4 s for the dinner and 15.8 to 19.2 s for the run,
-2 looks 10.1 to 13.4 s, one `/score` 7.4 to 7.8 s.
+`REHEARSAL OK` both times, with the picks of the CPU run, fits within 3 points and margins within 0.03.
+Through the front door with `curl`, 3 runs each:
 
-Cursor and one other agent session stayed open, and swap went from 3 GB to 11.8 GB while the model loaded,
-so a quiet Mac should do a little better. No memory kill happened in this run.
+| Request | 5 questions | Fit and person |
+|---|---|---|
+| 3 looks | 12.6 to 19.2 s | 6.3 s |
+| 2 looks | 10.1 to 13.4 s | 4.2 s |
+| `/facts` for 3 photos | not needed | 8.1 to 8.3 s |
+| One `/score` | 7.4 to 7.8 s | 4.1 to 4.5 s |
+
+The five-question numbers come from a Mac with Cursor and another agent session open and swap at 11.8 GB, the
+others from a quieter one, so that table overstates the gain. The next one is measured within one load.
 
 What one look costs, timed in one process with the decider's own engine and questions, median of 3 runs after
 a warm-up run:
 
-| Questions | 512x512 photos | 512x288 frames, a webcam's shape |
-|---|---|---|
-| The 5 that `/choose` asks today | 4.15 s | 4.50 s |
-| The fit question alone | 3.18 s | 2.55 s |
-| Fit and person | 4.16 s | |
+| Questions in the request | Quiet Mac, 512x512 | Loaded Mac, 512x512 | Loaded Mac, 512x288 |
+|---|---|---|---|
+| The fit alone | 1.8 s | 3.18 s | 2.55 s |
+| The fit and `person` | 2.1 s | 4.16 s | |
+| All 5 | | 4.15 s | 4.50 s |
 
-- The fit question alone gives the same level, to 2 decimals, as all 5 together.
-- Time goes by pass through the model, not by size. One question is one pass and several are two, and the
-  fit question alone still takes 2.41 s on 256 px photos (2.66 s at 384 px). Smaller photos also change the
-  level (blazer 2.68 at 512 px, 2.36 at 384 px, 2.06 at 256 px), so the page keeps sending 512 px.
-- The load takes about 88 s once the weights are cached. The first call after it takes 57 s and the next ones
-  about 4 s. New image shapes later cost nothing visible (5.0 s and 4.5 s).
+- All of them give the same level, to 2 decimals.
+- Time goes by pass through the model, not by how many questions a pass carries. `person` beside the fit costs
+  0.3 s, and a smaller photo saves little: the fit alone still takes 2.41 s on 256 px photos and 2.66 s at
+  384 px. Smaller photos do change the level (blazer 2.68 at 512 px, 2.36 at 384 px, 2.06 at 256 px), so the
+  page keeps sending 512 px.
+- The load takes 29 to 62 s once the weights are cached on a quiet Mac, about 88 s with the machine loaded. The
+  first call after it takes 17 s (57 s loaded) and the next ones about 2 s, so the first decision in the browser
+  costs about 18 s. New image shapes later cost nothing visible (5.0 s and 4.5 s).
 - With the model on MPS the process holds 10.73 GB. Loaded with the Podman VM (4.33 GB), Chrome and Cursor
   open, the Mac ran out of memory and macOS killed idle system daemons, twice
   (`JetsamEvent-2026-11-26-170105` and `-170126` in `/Library/Logs/DiagnosticReports`). No user process was
@@ -125,6 +136,27 @@ a warm-up run:
   Plan B run.
 - CPU is no fallback on this Mac. In bf16 on 4 threads a 3-image request took 122.5 s and 149.4 s (machine
   under load), and float32 weights would be about 20 GB, more than the Mac has.
+
+**`person` stays in `/choose`.** Asked for its fit alone, the eight stock photos with no outfit in them
+(`bench/labels.csv`, group none) are not held back. How many of them score above fit 25, and the highest level
+among them:
+
+| Way of asking | Dinner date | Morning run |
+|---|---|---|
+| The fit alone | 7 of 8, level 2.18 (fit 86) | 4 of 8, level 1.62 (fit 51) |
+| The fit and `person` | 2 of 8, level 1.81 (fit 63) | 2 of 8, level 1.52 (fit 45) |
+| The fit with "If no outfit is visible, pick the lowest level." added | 3 of 8, level 1.38 (fit 36) | 1 of 8, level 1.50 (fit 44) |
+
+With `person`, the six photos with nobody in them score 0. The other two show a person (0.69 to 0.85), which
+the first design let through as well: a plain tank and one of them tie for a morning run at level 1.5, and one
+of them beats a blazer. The extra sentence holds back less and moves real looks by up to 0.2 of a level (the
+dress 1.58 to 1.78 for a dinner date), so the wording stays as it is.
+
+`bench/choice_eval.py --device mps` takes 2.5 minutes on the Mac. On its CPU the same table's rows took 122 to
+149 s each, with the machine loaded. Asking one `choice` question over all three looks gives the same winner in
+4 of 6 orders for each occasion, and slot 1 wins 8 of the 12 orders. Each look scored alone picks the blazer
+for a dinner date (1.43 / 2.73 / 1.88, margin 0.85, in 7.4 s) and the plain tank for a morning run
+(2.33 / 0.90 / 0.89, margin 1.43, in 6.5 s).
 
 ## Register
 
@@ -136,10 +168,11 @@ a warm-up run:
 | M4 | Decider E2B v2 image latency on L4 | INCONCLUSIVE | No GPU or AWS account here. Card: 62 ms per text question on H100. Builder Center: 131 ms for the v1 2B on ml.g6.xlarge, text only |
 | M5 | Scores use the full 0 to 4 range | NOT VERIFIED | Both decision models stay between about 0.2 and 3.3. The page needs a linear stretch |
 | M6 | SigLIP2 in the browser can drive the meter alone | NOT VERIFIED | Ranks stock styled photos well, cannot separate no person from plain clothes, and reversed a real pair of phone photos |
-| M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate). On the Mac, 7.4 to 7.8 s per `/score` on MPS with the machine loaded, so the meter moves about every 8 s |
+| M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate). On the Mac, 4.1 to 4.5 s per `/score` on MPS (7.4 to 7.8 s with the machine loaded), so the meter moves about every 4 s |
 | M8 | Decider E2B v2 runs on the presenter's Mac over Apple MPS | VERIFIED | MacBook Air M4, 16 GB: `decider ready: StrandsAgents/strands-decider-E2B-gemma4-v2-2611 on mps`, 10.73 GB resident against a 12.71 GB MPS limit, `REHEARSAL OK` with the CPU picks. Other apps must be closed: with Podman, Chrome and Cursor open, macOS ran out of memory at load and killed idle system daemons twice |
-| M9 | A 3-look decision on the Mac is fast enough for the talk | NOT MET with 5 questions | 12.6 to 15.4 s of model time for 3 looks once warm, 14.0 s in the browser. The fit question alone costs 2.55 s per look on webcam-shaped frames against 4.50 s for all 5, and gives the same level |
-| M10 | The first decision after a load | VERIFIED, slow once | 57 s for the first call, about 4 s for the next. New image shapes afterwards cost nothing visible. Run one decision before the talk |
+| M9 | A 3-look decision on the Mac is fast enough for the talk | VERIFIED with the fit and `person` | 6.3 s of model time for 3 looks and 4.2 s for 2, 7.8 s in the browser, against 12.6 to 19.2 s with five questions. `/choose` asks the fit and `person`; `/facts` answers the other three facts when the stylist is asked (8.1 to 8.3 s for 3 photos). The first decision after a load is M10 |
+| M10 | The first decision after a load | VERIFIED, slow once | 17 s for the first call on a quiet Mac, 57 s with it loaded, so the first decision in the browser takes 18.4 s (49.6 s with five questions). New image shapes afterwards cost nothing visible. Run one decision before the talk |
+| M11 | Asking only the fit would let a photo with nobody in it win | VERIFIED, so `/choose` also asks `person` | The eight stock photos with no outfit reach level 2.18 and fit 86 for a dinner date, and one ties with a real look for a morning run. With `person` six of them score 0. Two show a person and still rank by fit, as in the first design. Table above |
 | C1 | SageMaker scale-to-zero holds requests while at zero | NOT VERIFIED | "any attempts to invoke the endpoint will produce an error" [docs](https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling-zero-instances.html) |
 | C2 | Scale up from zero is automatic | NOT VERIFIED | Needs a StepScaling policy and a CloudWatch alarm on `NoCapacityInvocationFailures`, plus MinInstanceCount 0. Same docs |
 | C3 | Time to scale up from zero | INCONCLUSIVE | Docs say "several minutes" |
@@ -168,5 +201,6 @@ a warm-up run:
    the error at zero into a "warming up" reply.
 4. The page needs a linear stretch of the 0 to 4 level onto 0 to 100.
 5. The stylist must receive text only, and Cloud Run needs a billing account even at $0.
-6. On the Mac, Plan B runs on MPS only, with other apps closed. The first decision after a load pays about 50 s
-   once, so run one before the talk. Whether `/choose` should ask only the fit question is open (M9).
+6. On the Mac, Plan B runs on MPS only, with other apps closed, and the first decision after a load is slow
+   once (18 s), so run one before the talk. `/choose` asks the fit and `person`, and `/facts` answers the other
+   three facts when the stylist is asked (M9, M11).
