@@ -6,7 +6,7 @@
   <title>Outfit Checker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="booth">
@@ -14,7 +14,7 @@
       <div class="window">
         <video id="video" autoplay playsinline muted></video>
         <div class="placeholder" id="placeholder">
-          <button id="start">♡ Start camera</button>
+          <button id="start" class="btn">♡ Start camera</button>
           <p>Stand back so your whole outfit is in view.</p>
         </div>
         <div class="mood" id="mood"></div>
@@ -33,14 +33,22 @@
         <div class="pct"><span id="pct">--</span><small>%</small></div>
       </div>
       <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="controls">
+        <span class="state" id="state" data-state="off" role="status">off</span>
+        <button id="warm" class="btn small" hidden>☆ Warm up</button>
+        <button id="retry" class="btn small" hidden>↻ Retry</button>
+        <button id="styleme" class="btn small" disabled>♡ Style me</button>
+      </div>
+      <p class="advice" id="advice" hidden></p>
       <div class="foot">
         <span>An AI estimate of your outfit, not a judgment of you.</span>
         <span id="status">camera off</span>
       </div>
     </section>
-    <p class="privacy">Frames go only to your own server for scoring and are never stored.</p>
+    <p class="privacy">Frames are scored and never stored. The stylist only sees the scores, never the image.</p>
   </main>
   <canvas id="canvas" hidden></canvas>
-  <script src="/static/app.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
