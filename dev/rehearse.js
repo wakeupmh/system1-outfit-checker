@@ -46,6 +46,7 @@ const CASES = [
     console.log(`${ok ? "OK  " : "FAIL"} ${c.chip}: pick ${"ABC"[choice.pick]}${OWN ? "" : ` (expected ${"ABC"[c.expect]}, the ${c.name})`}, ` +
       `fits ${fits}, margin ${choice.margin}, ${choice.confident ? "confident" : "tie"}, ` +
       `${secs} s in the browser (model ${(choice.ms / 1000).toFixed(1)} s), ${choice.model}`);
+    await page.waitForTimeout(3000);
     await page.screenshot({ path: path.join(OUT, `rehearse-${c.expect}.png`) });
   }
   if (errors.length) { failed = true; console.log("page errors:", errors); }
