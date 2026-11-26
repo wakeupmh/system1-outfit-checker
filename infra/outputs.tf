@@ -19,6 +19,11 @@ output "demo_key" {
   sensitive = true
 }
 
+output "admin_key" {
+  value     = local.admin_key
+  sensitive = true
+}
+
 output "ecr_repo_url" {
   value = aws_ecr_repository.decider.repository_url
 }

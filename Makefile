@@ -76,7 +76,7 @@ down: infra/terraform.tfvars init
 	rm -f web/config.js firebase.json
 
 warm sleep:
-	@curl -sS -X POST -w ' %{http_code}\n' -H "x-demo-key: $$($(TF) output -raw demo_key)" "$$($(TF) output -raw frontdoor_url)/$@"
+	@curl -sS -X POST -w ' %{http_code}\n' -H "x-admin-key: $$($(TF) output -raw admin_key)" "$$($(TF) output -raw frontdoor_url)/$@"
 
 status:
 	@curl -sS -w ' %{http_code}\n' -H "x-demo-key: $$($(TF) output -raw demo_key)" "$$($(TF) output -raw frontdoor_url)/status"
