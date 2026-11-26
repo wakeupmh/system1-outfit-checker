@@ -1,7 +1,8 @@
 # Unknowns register
 
 Run on 2026-11-26, updated the same day. Each row is VERIFIED, NOT VERIFIED or INCONCLUSIVE, with its evidence.
-Model numbers come from `bench/outfit_eval.py` on 4 CPU threads (no GPU in this environment).
+Model numbers come from `bench/outfit_eval.py` on 4 CPU threads (no GPU in this environment), except the Mac
+section, which ran on the presenter's MacBook Air M4.
 Cloud facts come from the linked docs.
 
 ## Model results
@@ -82,7 +83,48 @@ casual pastel one (floral jacket, wide trousers). Different people, one photo ea
 
 Through `curl` alone the same decisions take 13 to 16 s. With Chromium on the same 4 cores (camera stream
 and animations at about 70% of a core) the model got about 2.2 cores and took twice as long. A laptop with
-more cores, or Apple MPS (now picked automatically), should do better; not measured.
+more cores, or Apple MPS (now picked automatically), should do better. The Mac is measured next.
+
+### The choose flow on the presenter's Mac, real model, Apple MPS
+
+MacBook Air (Mac16,12), Apple M4 with 4 performance and 6 efficiency cores, 16 GB of memory, macOS 26.6.2.
+Python 3.14.6, torch 2.15.0, strands-decider 0.4.0. PyTorch picks `mps` by itself and reports a
+`recommended_max_memory()` of 12.71 GB. `dev/rehearse.js` against `DECIDER_MOCK=0 dev/run.sh`, stock trio:
+
+| Occasion | Pick | Fits (tank / blazer / dress) | Margin | Model time | In the browser |
+|---|---|---|---|---|---|
+| Jantar romântico | blazer | 31 / 100 / 62 | 0.81 | 48.9 s | 49.6 s, the first decision after the load |
+| Corrida no parque | plain tank | 58 / 0 / 0 | 0.94 | 12.6 s | 14.0 s |
+
+`REHEARSAL OK`. Same picks as on CPU, fits within 3 points, margins within 0.03. Through the front door with
+`curl` on the same load, 3 runs each: 3 looks 12.6 to 15.4 s for the dinner and 15.8 to 19.2 s for the run,
+2 looks 10.1 to 13.4 s, one `/score` 7.4 to 7.8 s.
+
+Cursor and one other agent session stayed open, and swap went from 3 GB to 11.8 GB while the model loaded,
+so a quiet Mac should do a little better. No memory kill happened in this run.
+
+What one look costs, timed in one process with the decider's own engine and questions, median of 3 runs after
+a warm-up run:
+
+| Questions | 512x512 photos | 512x288 frames, a webcam's shape |
+|---|---|---|
+| The 5 that `/choose` asks today | 4.15 s | 4.50 s |
+| The fit question alone | 3.18 s | 2.55 s |
+| Fit and person | 4.16 s | |
+
+- The fit question alone gives the same level, to 2 decimals, as all 5 together.
+- Time goes by pass through the model, not by size. One question is one pass and several are two, and the
+  fit question alone still takes 2.41 s on 256 px photos (2.66 s at 384 px). Smaller photos also change the
+  level (blazer 2.68 at 512 px, 2.36 at 384 px, 2.06 at 256 px), so the page keeps sending 512 px.
+- The load takes about 88 s once the weights are cached. The first call after it takes 57 s and the next ones
+  about 4 s. New image shapes later cost nothing visible (5.0 s and 4.5 s).
+- With the model on MPS the process holds 10.73 GB. Loaded with the Podman VM (4.33 GB), Chrome and Cursor
+  open, the Mac ran out of memory and macOS killed idle system daemons, twice
+  (`JetsamEvent-2026-11-26-170105` and `-170126` in `/Library/Logs/DiagnosticReports`). No user process was
+  killed. With Podman stopped and Chrome closed, the same load caused no kill. Close other apps before a
+  Plan B run.
+- CPU is no fallback on this Mac. In bf16 on 4 threads a 3-image request took 122.5 s and 149.4 s (machine
+  under load), and float32 weights would be about 20 GB, more than the Mac has.
 
 ## Register
 
@@ -90,11 +132,14 @@ more cores, or Apple MPS (now picked automatically), should do better; not measu
 |---|---|---|---|
 | M1 | Decider E2B v2 accepts images | VERIFIED | Ran 22 images through `images` field |
 | M2 | Decider E2B v2 judges outfits although v2 is trained on text only (model card) | VERIFIED on both labelled sets and their webcam-quality versions, INCONCLUSIVE on real webcam frames | Tables above |
-| M3 | Decider E2B v2 fits a 24 GB L4 | INCONCLUSIVE, likely | 10.3 GB bf16 weights, card says one 24 GB GPU. 5.0 GB peak RAM on CPU because Gemma 4 E2B's per-layer embeddings are mostly untouched. Needs a GPU run |
+| M3 | Decider E2B v2 fits a 24 GB L4 | INCONCLUSIVE, likely | 10.3 GB bf16 weights, card says one 24 GB GPU. 5.0 GB peak RAM on CPU because Gemma 4 E2B's per-layer embeddings are mostly untouched. It holds 10.73 GB on Apple MPS (M8); the L4 still needs a run |
 | M4 | Decider E2B v2 image latency on L4 | INCONCLUSIVE | No GPU or AWS account here. Card: 62 ms per text question on H100. Builder Center: 131 ms for the v1 2B on ml.g6.xlarge, text only |
 | M5 | Scores use the full 0 to 4 range | NOT VERIFIED | Both decision models stay between about 0.2 and 3.3. The page needs a linear stretch |
 | M6 | SigLIP2 in the browser can drive the meter alone | NOT VERIFIED | Ranks stock styled photos well, cannot separate no person from plain clothes, and reversed a real pair of phone photos |
-| M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate) |
+| M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate). On the Mac, 7.4 to 7.8 s per `/score` on MPS with the machine loaded, so the meter moves about every 8 s |
+| M8 | Decider E2B v2 runs on the presenter's Mac over Apple MPS | VERIFIED | MacBook Air M4, 16 GB: `decider ready: StrandsAgents/strands-decider-E2B-gemma4-v2-2611 on mps`, 10.73 GB resident against a 12.71 GB MPS limit, `REHEARSAL OK` with the CPU picks. Other apps must be closed: with Podman, Chrome and Cursor open, macOS ran out of memory at load and killed idle system daemons twice |
+| M9 | A 3-look decision on the Mac is fast enough for the talk | NOT MET with 5 questions | 12.6 to 15.4 s of model time for 3 looks once warm, 14.0 s in the browser. The fit question alone costs 2.55 s per look on webcam-shaped frames against 4.50 s for all 5, and gives the same level |
+| M10 | The first decision after a load | VERIFIED, slow once | 57 s for the first call, about 4 s for the next. New image shapes afterwards cost nothing visible. Run one decision before the talk |
 | C1 | SageMaker scale-to-zero holds requests while at zero | NOT VERIFIED | "any attempts to invoke the endpoint will produce an error" [docs](https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling-zero-instances.html) |
 | C2 | Scale up from zero is automatic | NOT VERIFIED | Needs a StepScaling policy and a CloudWatch alarm on `NoCapacityInvocationFailures`, plus MinInstanceCount 0. Same docs |
 | C3 | Time to scale up from zero | INCONCLUSIVE | Docs say "several minutes" |
@@ -105,7 +150,7 @@ more cores, or Apple MPS (now picked automatically), should do better; not measu
 | C8 | Lambda function URL works with only `lambda:InvokeFunctionUrl` | NOT VERIFIED | Since Oct 2025 new URLs also need `lambda:InvokeFunction` [docs](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html) |
 | C9 | Lambda request and response fit | VERIFIED | 6 MB each, frames are about 50 KB [limits](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html) |
 | C10 | SageMaker custom container contract | VERIFIED | Port 8080, `/ping` and `/invocations`, `/ping` must pass within 8 minutes, model answers within 60 s [docs](https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-inference-code.html) |
-| C11 | AWS credentials in this cloud session work | NOT VERIFIED | `sts get-caller-identity` returns InvalidClientTokenId, so C3, C4 and M3/M4 need the owner's account |
+| C11 | AWS credentials in this cloud session work | NOT VERIFIED | In the first session `sts get-caller-identity` returned InvalidClientTokenId. On the presenter's Mac there is no default profile, `my-sso-profile` (us-east-1) has an expired SSO session, and `gcloud` is not installed. C3, C4 and M3/M4 still need a login |
 | G1 | Gemini free tier keeps inputs private | NOT VERIFIED | Free tier inputs are "used to improve our products" [pricing](https://aistudio.google.com/docs/pricing). Send text only |
 | G2 | Gemini free tier rate limits | INCONCLUSIVE | No longer published as a table; per project in AI Studio |
 | G3 | Cloud Run runs without a billing account | NOT VERIFIED | Billing account required even inside the free tier |
@@ -123,3 +168,5 @@ more cores, or Apple MPS (now picked automatically), should do better; not measu
    the error at zero into a "warming up" reply.
 4. The page needs a linear stretch of the 0 to 4 level onto 0 to 100.
 5. The stylist must receive text only, and Cloud Run needs a billing account even at $0.
+6. On the Mac, Plan B runs on MPS only, with other apps closed. The first decision after a load pays about 50 s
+   once, so run one before the talk. Whether `/choose` should ask only the fit question is open (M9).
