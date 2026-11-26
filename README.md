@@ -8,6 +8,8 @@ Inspired by the Fit Check demo in Liquid AI's
 [System One Arcade](https://huggingface.co/spaces/LiquidAI/system-one-arcade)
 ([blog](https://www.liquid.ai/blog/d1-open)). The code, prompt and art here are original.
 
+Picking up the work before the talk? Start with `docs/handoff.md`.
+
 ## Parts
 
 `docs/contract.md` is the spec every part builds against.
