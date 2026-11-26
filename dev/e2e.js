@@ -10,8 +10,15 @@ const PY = process.env.PY || "python3";
 const OUT = process.env.OUT || require("os").tmpdir();
 const BASE = process.env.BASE || "http://localhost:9000";
 const DECIDER_PORT = process.env.DECIDER_PORT || "8080";
-const IMAGES = ["deepfashion_0.jpg", "deepfashion_10.jpg", "deepfashion_4.jpg"]
+const STOCK = ["deepfashion_0.jpg", "deepfashion_10.jpg", "deepfashion_4.jpg"]
   .map((f) => path.join(REPO, "bench", ".images", f));
+// The stock photos are gitignored; without them (as in CI) use generated stand-ins. The mock decider only
+// hashes the bytes, so the check is the same either way.
+const IMAGES = STOCK.every((f) => require("fs").existsSync(f)) ? STOCK : (() => {
+  const dir = path.join(OUT, "e2e-looks");
+  execSync(`${PY} ${path.join(REPO, "dev", "fixtures.py")} ${dir}`);
+  return [0, 1, 2].map((i) => path.join(dir, `look_${i}.jpg`));
+})();
 const state = (page) => page.getAttribute("#state", "data-state");
 async function decided(page) {
   await page.waitForSelector('#mode-look:is([data-phase="revealed"], [data-phase="failed"])', { timeout: 60000 });
