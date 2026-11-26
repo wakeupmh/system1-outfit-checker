@@ -61,23 +61,30 @@ def webcam(im):
     return Image.open(io.BytesIO(buf.getvalue())).convert("RGB")
 
 
-def load_images(labels):
+_hf_rows = {}
+
+
+def fetch(source, id_):
+    """Path of a stock image in the cache, downloaded on first use."""
     CACHE.mkdir(parents=True, exist_ok=True)
-    rows = list(csv.DictReader(open(labels)))
-    hf_rows = {}
+    path = CACHE / f"{source}_{id_}.jpg"
+    if not path.exists():
+        if source == "coco":
+            url = f"http://images.cocodataset.org/val2017/{id_}.jpg"
+        else:
+            dataset, split, col = HF_SOURCES[source]
+            if source not in _hf_rows:
+                _hf_rows[source] = json.load(urllib.request.urlopen(FIRST_ROWS.format(dataset, split)))["rows"]
+            img = _hf_rows[source][int(id_)]["row"][col]
+            url = img["src"] if isinstance(img, dict) else img
+        urllib.request.urlretrieve(url, path)
+    return path
+
+
+def load_images(labels):
     out = []
-    for r in rows:
-        path = CACHE / f"{r['source']}_{r['id']}.jpg"
-        if not path.exists():
-            if r["source"] == "coco":
-                url = f"http://images.cocodataset.org/val2017/{r['id']}.jpg"
-            else:
-                dataset, split, col = HF_SOURCES[r["source"]]
-                if r["source"] not in hf_rows:
-                    hf_rows[r["source"]] = json.load(urllib.request.urlopen(FIRST_ROWS.format(dataset, split)))["rows"]
-                img = hf_rows[r["source"]][int(r["id"])]["row"][col]
-                url = img["src"] if isinstance(img, dict) else img
-            urllib.request.urlretrieve(url, path)
+    for r in csv.DictReader(open(labels)):
+        path = fetch(r["source"], r["id"])
         im = Image.open(path).convert("RGB")
         im.thumbnail((512, 512))
         out.append((f"{r['source']}_{r['id']}", r["group"], im))

@@ -116,13 +116,13 @@ class DeciderEngine:
         from strands_decider.decision import load_decision_engine
 
         self.model = model_id
-        self._engine = load_decision_engine(model_id, device=device, dtype="bfloat16")
+        self.engine = load_decision_engine(model_id, device=device, dtype="bfloat16")
 
     def _evaluate(self, state: str, image_b64: str, questions: dict) -> dict:
         from strands_decider.core import Request as DeciderRequest
 
         req = DeciderRequest.model_validate({"state": state, "images": [image_b64], "questions": questions})
-        return self._engine.evaluate(req).model_dump()["answers"]
+        return self.engine.evaluate(req).model_dump()["answers"]
 
     def answer(self, image_b64: str) -> dict:
         return self._evaluate("A webcam photo.", image_b64, QUESTIONS)
