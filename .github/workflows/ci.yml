@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            decider/requirements.txt
+            stylist/requirements.txt
+      - name: Install CPU torch, then the app and test dependencies
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+          pip install -r requirements-dev.txt
+      - run: pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.63.0
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Browser end to end, mock decider and stylist
+        run: |
+          dev/run.sh > "$RUNNER_TEMP/stack.log" 2>&1 &
+          for i in $(seq 60); do
+            curl -sf -H 'x-demo-key: dev' localhost:9000/status >/dev/null && curl -sf localhost:8081/healthz >/dev/null && break
+            sleep 1
+          done
+          NODE_PATH="$RUNNER_TEMP/pw/node_modules" PY=python OUT="$RUNNER_TEMP" node dev/e2e.js
+      - name: Stack log
+        if: failure()
+        run: cat "$RUNNER_TEMP/stack.log"
+
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.2"
+          terraform_wrapper: false
+      - run: make validate
+      - name: Plan with no credentials
+        run: make plan-offline | tail -3
+      - name: Validate the bootstrap root
+        run: |
+          terraform -chdir=infra/bootstrap fmt -check
+          terraform -chdir=infra/bootstrap init -input=false -backend=false
+          terraform -chdir=infra/bootstrap validate

@@ -11,20 +11,30 @@ tfval = echo '$(1)' | $(TF) console | tr -d '"'
 dirhash = find $(1) -type f ! -path '*/__pycache__/*' -print0 | LC_ALL=C sort -z | xargs -0 cksum | cksum | cut -d' ' -f1
 
 DECIDER_BASE ?=
+# Set to share state between laptops and CI: an S3 bucket from infra/bootstrap.
+TF_STATE_BUCKET ?=
+TF_STATE_REGION ?= us-east-1
+TF_STATE_KEY    ?= outfit-checker/terraform.tfstate
 
-.PHONY: help up down init repos images decider-image stylist-image apply web warm sleep status plan plan-offline fmt validate
+.PHONY: help config up down init repos images decider-image stylist-image apply web warm sleep status plan plan-offline fmt validate
 
 help:
 	@echo "make up | down | warm | sleep | status | plan | plan-offline | fmt | validate"
 
-infra/terraform.tfvars:
-	@echo "Copy infra/terraform.tfvars.example to infra/terraform.tfvars and fill it in." >&2
-	@exit 1
+# Settings come from infra/terraform.tfvars, or from TF_VAR_* env vars as in CI.
+config:
+	@if [ ! -f infra/terraform.tfvars ] && [ -z "$${TF_VAR_gcp_project:-}" ]; then \
+		echo "Copy infra/terraform.tfvars.example to infra/terraform.tfvars and fill it in." >&2; exit 1; fi
 
-up: infra/terraform.tfvars init repos images apply web
+up: config init repos images apply web
 
+# With TF_STATE_BUCKET set, state lives in S3 (shared with CI); otherwise in a local file.
 init:
-	$(TF) init -input=false
+	if [ -n "$(TF_STATE_BUCKET)" ]; then \
+		printf 'terraform {\n  backend "s3" {\n    bucket       = "%s"\n    key          = "%s"\n    region       = "%s"\n    use_lockfile = true\n  }\n}\n' \
+			"$(TF_STATE_BUCKET)" "$(TF_STATE_KEY)" "$(TF_STATE_REGION)" > infra/backend_override.tf; \
+	else rm -f infra/backend_override.tf; fi
+	$(TF) init -input=false -reconfigure
 
 repos:
 	$(TF) apply -input=false -auto-approve \
@@ -71,7 +81,7 @@ web:
 	firebase deploy --only hosting --non-interactive --project "$$($(call tfval,var.gcp_project))"
 	@echo "Open $$($(TF) output -raw hosting_url)"
 
-down: infra/terraform.tfvars init
+down: config init
 	$(TF) destroy -input=false -auto-approve
 	rm -f web/config.js firebase.json
 
@@ -81,7 +91,7 @@ warm sleep:
 status:
 	@curl -sS -w ' %{http_code}\n' -H "x-demo-key: $$($(TF) output -raw demo_key)" "$$($(TF) output -raw frontdoor_url)/status"
 
-plan: infra/terraform.tfvars init
+plan: config init
 	$(TF) plan -input=false
 
 plan-offline:

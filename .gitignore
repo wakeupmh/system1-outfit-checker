@@ -7,6 +7,8 @@ bench/.images/
 *.tfstate
 *.tfstate.*
 infra/terraform.tfvars
+infra/backend_override.tf
+infra/bootstrap/terraform.tfvars
 infra/*.auto.tfvars
 infra/.build/
 web/config.js

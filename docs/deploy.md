@@ -1,8 +1,10 @@
 # Deploy
 
 `make up` builds and deploys the whole system to AWS and Google. `make down` deletes all of it.
-Terraform in `infra/` keeps both clouds in one local state file, `infra/terraform.tfstate`. Keep that
-file: `make down` needs it.
+Terraform in `infra/` keeps both clouds in one state. By default that is a local file,
+`infra/terraform.tfstate`; keep it, since `make down` needs it. With `TF_STATE_BUCKET` set, state lives in
+S3 and is shared with the GitHub Actions deploy. `docs/ci.md` covers deploying on merge to `main` and
+where each cloud's credentials go.
 
 | Part | Cloud | Resource |
 |---|---|---|
