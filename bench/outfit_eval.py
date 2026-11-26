@@ -18,14 +18,17 @@ sys.path.insert(0, str(ROOT))
 from server import QUESTION, LEVELS  # the app's own question
 
 CACHE = ROOT / "bench" / ".images"
-FASHION_ROWS = ("https://datasets-server.huggingface.co/first-rows"
-                "?dataset=detection-datasets/fashionpedia&config=default&split=val")
+FIRST_ROWS = "https://datasets-server.huggingface.co/first-rows?dataset={}&config=default&split={}"
+HF_SOURCES = {  # source name -> (dataset, split, image column)
+    "fashionpedia": ("detection-datasets/fashionpedia", "val", "image"),
+    "deepfashion": ("SaffalPoosh/deepFashion-with-masks", "train", "images"),
+}
 
 
-def load_images():
+def load_images(labels):
     CACHE.mkdir(parents=True, exist_ok=True)
-    rows = list(csv.DictReader(open(ROOT / "bench" / "labels.csv")))
-    fashion = None
+    rows = list(csv.DictReader(open(labels)))
+    hf_rows = {}
     out = []
     for r in rows:
         path = CACHE / f"{r['source']}_{r['id']}.jpg"
@@ -33,8 +36,10 @@ def load_images():
             if r["source"] == "coco":
                 url = f"http://images.cocodataset.org/val2017/{r['id']}.jpg"
             else:
-                fashion = fashion or json.load(urllib.request.urlopen(FASHION_ROWS))["rows"]
-                img = fashion[int(r["id"])]["row"]["image"]
+                dataset, split, col = HF_SOURCES[r["source"]]
+                if r["source"] not in hf_rows:
+                    hf_rows[r["source"]] = json.load(urllib.request.urlopen(FIRST_ROWS.format(dataset, split)))["rows"]
+                img = hf_rows[r["source"]][int(r["id"])]["row"][col]
                 url = img["src"] if isinstance(img, dict) else img
             urllib.request.urlretrieve(url, path)
         im = Image.open(path).convert("RGB")
@@ -97,11 +102,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("kind", choices=["d1", "decider", "siglip"])
     ap.add_argument("--model")
+    ap.add_argument("--labels", default=str(ROOT / "bench" / "labels.csv"))
+    ap.add_argument("--threads", type=int, help="CPU threads, to estimate smaller machines")
     a = ap.parse_args()
+    if a.threads:
+        import torch
+        torch.set_num_threads(a.threads)
     default = {"d1": "LiquidAI/d1-2B", "decider": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611",
                "siglip": "google/siglip2-base-patch16-224"}[a.kind]
     model_id = a.model or default
-    images = load_images()
+    images = load_images(a.labels)
     t = time.perf_counter()
     score = {"d1": d1_scorer, "decider": decider_scorer, "siglip": siglip_scorer}[a.kind](model_id)
     print(f"model {model_id}  load {time.perf_counter() - t:.1f}s", flush=True)
@@ -112,10 +122,12 @@ def main():
         times.append(dt); res.setdefault(group, []).append(s)
         print(f"{dt:6.2f}s  {group:6s} {name:22s} level {s:.2f}", flush=True)
     means = {g: statistics.mean(v) for g, v in res.items()}
-    a_ = auc(res["styled"], res["none"] + res["plain"])
-    ok = means["none"] < means["plain"] < means["styled"] and a_ >= 0.85
-    print(f"means none {means['none']:.2f}  plain {means['plain']:.2f}  styled {means['styled']:.2f}"
-          f"  AUC(styled vs rest) {a_:.2f}  median {statistics.median(times):.2f}s/frame"
+    rest = [s for g, v in res.items() if g != "styled" for s in v]
+    a_ = auc(res["styled"], rest)
+    order = [g for g in ("none", "plain", "styled") if g in means]
+    ok = all(means[x] < means[y] for x, y in zip(order, order[1:])) and a_ >= 0.85
+    print("means " + "  ".join(f"{g} {means[g]:.2f}" for g in order)
+          + f"  AUC(styled vs rest) {a_:.2f}  median {statistics.median(times):.2f}s/frame"
           f"  -> {'PASS' if ok else 'FAIL'}")
 
 
