@@ -1,8 +1,9 @@
+import pytest
 from fastapi.testclient import TestClient
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
-from stylist.app import CANNED_ADVICE, CannedLlm, Stylist, build_app
+from stylist.app import CANNED_ADVICE, CANNED_CHOICE_ADVICE, CannedLlm, Stylist, build_app, stylist_from_env
 
 VERDICT = {"score": 72, "level": 2.44, "probs": [0.01, 0.08, 0.4, 0.38, 0.13],
            "facts": {"person": 0.97, "formality": "smart_casual", "palette": "neutral", "shoes": 0.91},
@@ -53,3 +54,50 @@ def test_the_agent_sees_only_the_verdict_facts_as_text():
     for fact in ("72/100", "2.44", "97%", "smart_casual", "neutral", "91%"):
         assert fact in text
     assert "base64" not in text and "143.2" not in text
+
+
+CHOICE = {"occasion": "jantar romântico", "pick": 1, "confident": True, "margin": 0.88,
+          "looks": [{"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02],
+                     "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13}},
+                    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05],
+                     "facts": {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}}],
+          "ms": 5012.4, "model": "m"}
+
+
+def test_mock_mode_answers_a_choice_in_portuguese_and_a_verdict_as_before(monkeypatch):
+    monkeypatch.setenv("STYLIST_MOCK", "1")
+    mock = TestClient(build_app(stylist_from_env(), [ORIGIN]))
+    choice = mock.post("/style", json={"choice": CHOICE})
+    verdict = mock.post("/style", json={"verdict": VERDICT})
+    assert choice.status_code == verdict.status_code == 200
+    advice = choice.json()["advice"]
+    assert advice == CANNED_CHOICE_ADVICE
+    assert 2 <= advice.count(".") <= 4 and "look" in advice and " é " in advice
+    assert verdict.json() == {"advice": CANNED_ADVICE}
+
+
+def test_the_agent_sees_only_the_choice_facts_as_text():
+    llm = RecordingLlm(model="rec")
+    llm.seen = []
+    choice = {**CHOICE, "images": ["data:image/jpeg;base64,AAAA"]}
+    assert client(llm).post("/style", json={"choice": choice}).json() == {"advice": "ok"}
+    parts = [p for c in llm.seen for p in c.parts]
+    assert parts and all(p.text and not p.inline_data for p in parts)
+    text = " ".join(p.text for p in parts)
+    for fact in ("jantar romântico", "look 2 de 2", "0.88", "18/100", "73/100", "athleisure", "pastel", "95%", "12%"):
+        assert fact in text
+    assert "base64" not in text and "5012" not in text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"verdict": VERDICT, "choice": CHOICE},
+        {"choice": {**CHOICE, "pick": 2}},
+        {"choice": {**CHOICE, "pick": -1}},
+        {"choice": {**CHOICE, "looks": CHOICE["looks"][:1], "pick": 0}},
+        {"choice": {**CHOICE, "occasion": ""}},
+    ],
+)
+def test_style_rejects_malformed_choices(body):
+    assert client().post("/style", json=body).status_code == 422
