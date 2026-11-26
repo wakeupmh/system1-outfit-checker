@@ -1,7 +1,8 @@
 // Two modes on one page, each an explicit state model.
 // Termômetro: webcam -> front door -> decider, off -> starting -> cold -> warming -> live, plus paused and error.
 // Paused stops sending frames, so an idle GPU can scale back to zero.
-// Escolher o look: a reducer over {phase, slots, occasion, choice, advice}; phase is editing -> thinking -> revealed | failed.
+// Escolher o look: a reducer over {phase, slots, occasion, choice, facts, advice}; phase is editing -> thinking -> revealed | failed.
+// /choose answers the fit alone, one pass per look. The facts come from /facts when the stylist is asked for.
 const CFG = window.OUTFIT_CONFIG || null;
 const MAX_SIDE = 512;
 const SMOOTH = 0.2;
@@ -230,6 +231,11 @@ const THOUGHTS = [
   "medindo o nível de produção…",
   "quase lá…",
 ];
+// What the advice bubble says while the page waits: first for the facts, then for the stylist.
+const ADVICE_WAITING = {
+  facts: "lendo o traje e a paleta de cada look…",
+  loading: "o estilista está pensando…",
+};
 const CAM_MSG = {
   off: "A câmera mostra cada look ao vivo.",
   starting: "Ligando a câmera…",
@@ -244,6 +250,7 @@ const blankLook = (cam = "off") => ({
   occasion: "",
   sent: [],
   choice: null,
+  facts: null,
   error: "",
   advice: { status: "none", text: "" },
 });
@@ -272,8 +279,13 @@ const STEPS = {
     FAIL: (m, a) => ({ ...m, phase: "failed", error: a.error }),
   },
   revealed: {
-    ASK: (m) => (m.advice.status === "loading" ? m : { ...m, advice: { status: "loading", text: "" } }),
-    ADVICE: (m, a) => (a.choice === m.choice ? { ...m, advice: { status: a.ok ? "done" : "error", text: a.text } } : m),
+    ASK: (m) => (m.advice.status === "none" || m.advice.status === "done" || m.advice.status === "error"
+      ? { ...m, advice: { status: m.facts ? "loading" : "facts", text: "" } } : m),
+    // A failed /facts sends null: the stylist then explains from the fits and the margin alone.
+    FACTS: (m, a) => (a.choice === m.choice && m.advice.status === "facts"
+      ? { ...m, facts: a.facts, advice: { status: "loading", text: "" } } : m),
+    ADVICE: (m, a) => (a.choice === m.choice && (m.advice.status === "facts" || m.advice.status === "loading")
+      ? { ...m, advice: { status: a.ok ? "done" : "error", text: a.text } } : m),
   },
   failed: {
     DECIDE: (m) => STEPS.editing.DECIDE(m),
@@ -286,7 +298,7 @@ function reduce(m, a) {
     if (m.phase === "thinking") return m;
     const next = EDITS[a.type](m, a);
     if (next === m) return m;
-    return { ...next, phase: "editing", choice: null, error: "", advice: { status: "none", text: "" } };
+    return { ...next, phase: "editing", choice: null, facts: null, error: "", advice: { status: "none", text: "" } };
   }
   const step = STEPS[m.phase][a.type];
   return step ? step(m, a) : m;
@@ -314,6 +326,18 @@ function parseChoice(body, sent) {
   return ok ? body : null;
 }
 
+function parseFacts(body, sent) {
+  const ok = body && Array.isArray(body.facts) && body.facts.length === sent
+    && body.facts.every((f) => f && typeof f.person === "number" && typeof f.formality === "string"
+      && typeof f.palette === "string" && typeof f.shoes === "number");
+  return ok ? body.facts : null;
+}
+
+// What the page says when the front door answers 503: the decider has no copy running.
+const coldMessage = (body) => body.state === "warming"
+  ? "O modelo ainda está aquecendo. Tenta de novo em alguns segundos."
+  : "O modelo está dormindo. Aqueça no Termômetro com a chave do apresentador.";
+
 async function decide() {
   if (!dispatch({ type: "DECIDE" })) return;
   $("look-stage").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -326,11 +350,7 @@ async function decide() {
   } catch (e) {
     return dispatch({ type: "FAIL", error: e.name === "TimeoutError" ? "Demorou demais. Tenta de novo?" : "Front door fora do ar." });
   }
-  if (res.status === 503) {
-    return dispatch({ type: "FAIL", error: res.body.state === "warming"
-      ? "O modelo ainda está aquecendo. Tenta de novo em alguns segundos."
-      : "O modelo está dormindo. Aqueça no Termômetro com a chave do apresentador." });
-  }
+  if (res.status === 503) return dispatch({ type: "FAIL", error: coldMessage(res.body) });
   if (res.status !== 200) return dispatch({ type: "FAIL", error: res.body.error || `A decisão falhou (${res.status}).` });
   const choice = parseChoice(res.body, sent.length);
   dispatch(choice ? { type: "RESULT", choice } : { type: "FAIL", error: "Resposta inesperada do modelo." });
@@ -339,7 +359,21 @@ async function decide() {
 async function explain() {
   if (!dispatch({ type: "ASK" })) return;
   const choice = look.choice;
-  const answer = await askStylist({ choice });
+  const { sent, slots } = look;
+  let { facts } = look;
+  if (!facts) {
+    let res;
+    try {
+      res = await api("POST", "/facts", { images: sent.map((i) => slots[i].img) }, {}, AbortSignal.timeout(CHOOSE_TIMEOUT_MS));
+    } catch (e) {
+      res = { status: 0, body: {} };
+    }
+    facts = res.status === 200 ? parseFacts(res.body, sent.length) : null;
+    if (!dispatch({ type: "FACTS", choice, facts })) return;
+  }
+  // Without facts the stylist still explains, from the fits and the margin.
+  const full = { ...choice, looks: choice.looks.map((l, k) => ({ ...l, facts: facts ? facts[k] : undefined })) };
+  const answer = await askStylist({ choice: full });
   dispatch({ type: "ADVICE", choice, ...answer });
 }
 
@@ -516,7 +550,7 @@ function renderLook(prev) {
     el.classList.toggle("skipped", !!choice && !scored);
     el.style.setProperty("--fit", scored ? scored.fit : 0);
     el.style.setProperty("--order", Math.max(k, 0));
-    const f = scored && scored.facts ? scored.facts : {};
+    const f = scored && m.facts ? m.facts[k] : {};
     el.querySelector(".facts").textContent = [FORMALITY[f.formality], PALETTE[f.palette] && `paleta ${PALETTE[f.palette]}`]
       .filter(Boolean).join(" · ");
     if (!scored) el.querySelector(".fitnum").textContent = "0";
@@ -534,11 +568,11 @@ function renderLook(prev) {
   if (choice) {
     const explainBtn = $("explain");
     explainBtn.textContent = choice.confident ? "Por quê?" : "Pedir desempate ao estilista";
-    explainBtn.disabled = m.advice.status === "loading";
+    explainBtn.disabled = m.advice.status === "facts" || m.advice.status === "loading";
     const adv = $("look-advice");
     adv.hidden = m.advice.status === "none";
     adv.dataset.tone = m.advice.status;
-    adv.textContent = m.advice.status === "loading" ? "o estilista está pensando…" : m.advice.text;
+    adv.textContent = ADVICE_WAITING[m.advice.status] || m.advice.text;
   }
 
   renderEngine(m);
