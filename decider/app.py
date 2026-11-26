@@ -88,6 +88,7 @@ def _digest(text: str) -> bytes:
 
 class MockEngine:
     model = "mock"
+    device = "none"
 
     def answer(self, image_b64: str) -> dict:
         h = _digest(image_b64)
@@ -116,6 +117,7 @@ class DeciderEngine:
         from strands_decider.decision import load_decision_engine
 
         self.model = model_id
+        self.device = device
         self.engine = load_decision_engine(model_id, device=device, dtype="bfloat16")
 
     def _evaluate(self, state: str, image_b64: str, questions: dict) -> dict:
@@ -133,12 +135,6 @@ class DeciderEngine:
         return [self._evaluate(look_state(occasion), image, questions) for image in images]
 
 
-def default_device() -> str:
-    import torch
-
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
 def build_app(load_engine) -> FastAPI:
     """`load_engine()` returns an object with `.model`, `.answer(image_b64) -> answers` and
     `.answer_looks(occasion, images) -> [answers]`."""
@@ -148,7 +144,7 @@ def build_app(load_engine) -> FastAPI:
     def load():
         try:
             slot["engine"] = load_engine()
-            log.warning("decider ready: %s", slot["engine"].model)
+            log.warning("decider ready: %s on %s", slot["engine"].model, slot["engine"].device)
         except Exception as e:
             log.exception("decider failed to load")
             slot["error"] = repr(e)
@@ -201,7 +197,9 @@ def engine_from_env():
     if os.environ.get("DECIDER_MOCK") == "1":
         return MockEngine()
     model_id = os.environ.get("DECIDER_MODEL", DEFAULT_MODEL)
-    return DeciderEngine(model_id, os.environ.get("DECIDER_DEVICE") or default_device())
+    from strands_decider.cli import resolve_device
+
+    return DeciderEngine(model_id, resolve_device(os.environ.get("DECIDER_DEVICE") or None))
 
 
 app = build_app(engine_from_env)
