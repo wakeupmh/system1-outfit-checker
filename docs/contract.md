@@ -64,8 +64,10 @@ The container downloads the weights from Hugging Face at startup.
 
 ## Front door (`frontdoor/`)
 
-Lambda function URL (payload format 2.0). Every request except `OPTIONS` needs header
-`x-demo-key: <DEMO_KEY>`, else 401. CORS is set on the function URL, not in code.
+Lambda function URL (payload format 2.0). `/score` and `/status` need header `x-demo-key: <DEMO_KEY>`,
+which ships in the page. `/warm` and `/sleep` need `x-admin-key: <ADMIN_KEY>`, which never ships in the
+page. A missing or wrong key is 401, and an empty key locks its routes. CORS is set on the function URL,
+not in code.
 
 | Route | Does | Returns |
 |---|---|---|
@@ -77,7 +79,7 @@ Lambda function URL (payload format 2.0). Every request except `OPTIONS` needs h
 `state` is derived from the inference component: current copies > 0 means `live`, desired > current means
 `warming`, else `cold`.
 
-Env: `DEMO_KEY`, `BACKEND` (`sagemaker` or `http`), `ENDPOINT_NAME`, `INFERENCE_COMPONENT` (sagemaker),
+Env: `DEMO_KEY`, `ADMIN_KEY`, `BACKEND` (`sagemaker` or `http`), `ENDPOINT_NAME`, `INFERENCE_COMPONENT` (sagemaker),
 `DECIDER_URL` (http, for local runs). With `BACKEND=http`, `/warm` and `/sleep` are no-ops and `/status`
 is `live` when `DECIDER_URL/ping` answers 200.
 
@@ -100,7 +102,7 @@ Static files. `web/config.js` sets `window.OUTFIT_CONFIG = {frontdoorUrl, stylis
 The page is a state machine: `off -> starting -> cold -> warming -> live`, plus `paused` and `error`.
 It enters `paused` when the tab is hidden or after 5 minutes of `live`, and `off` (camera released) on Stop.
 In `live` it sends one frame at a time to `POST /score`. In `cold` it shows a "Warm up" button
-that calls `POST /warm`, then polls `GET /status` every 5 s. "Style me" posts the last Verdict to the
+that asks for the presenter key once per tab, calls `POST /warm`, then polls `GET /status` every 5 s. "Style me" posts the last Verdict to the
 stylist and shows the advice.
 
 ## Ports for local runs
