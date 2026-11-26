@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+bench/.images/
+.claude/worktrees/
+.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform.tfvars
+infra/*.auto.tfvars
+infra/.build/
+web/config.js
+firebase.json
+.firebase/

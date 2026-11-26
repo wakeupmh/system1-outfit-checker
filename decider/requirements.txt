@@ -1,0 +1,4 @@
+strands-decider==0.4.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pillow>=13

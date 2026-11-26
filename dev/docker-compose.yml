@@ -1,0 +1,45 @@
+# docker compose -f dev/docker-compose.yml up --build
+# Real model on CPU: DECIDER_MOCK=0 docker compose -f dev/docker-compose.yml up --build
+services:
+  decider:
+    build:
+      context: ../decider
+      args:
+        BASE: ${DECIDER_BASE:-python:3.12-slim}
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    command: serve
+    environment:
+      DECIDER_MOCK: ${DECIDER_MOCK:-1}
+      DECIDER_DEVICE: cpu
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+    ports:
+      - "8080:8080"
+
+  frontdoor:
+    image: python:3.12-slim
+    working_dir: /repo
+    command: python -m frontdoor.local
+    environment:
+      DEMO_KEY: dev
+      BACKEND: http
+      DECIDER_URL: http://decider:8080
+      PORT: "9000"
+    volumes:
+      - ..:/repo:ro
+    ports:
+      - "9000:9000"
+
+  stylist:
+    build:
+      context: ../stylist
+      args:
+        BASE: ${STYLIST_BASE:-python:3.12-slim}
+    environment:
+      PORT: "8081"
+      STYLIST_MOCK: ${STYLIST_MOCK:-1}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GOOGLE_GENAI_USE_ENTERPRISE: "0"
+      ALLOWED_ORIGINS: http://localhost:9000,http://127.0.0.1:9000
+    ports:
+      - "8081:8081"

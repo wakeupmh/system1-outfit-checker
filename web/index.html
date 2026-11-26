@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Outfit Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="booth">
+    <section class="frame" id="frame">
+      <div class="window">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="placeholder" id="placeholder">
+          <button id="start" class="btn">♡ Start camera</button>
+          <p>Stand back so your whole outfit is in view.</p>
+        </div>
+        <div class="mood" id="mood"></div>
+      </div>
+      <h1 class="title"><span class="jp">コーデ判定</span><span class="en">fit check</span></h1>
+      <div class="stickers" id="stickers" aria-hidden="true"></div>
+      <time class="stamp" id="stamp"></time>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <div>
+          <div class="label">♡ 今日のコーデ</div>
+          <div class="sub">How styled is your outfit today?</div>
+        </div>
+        <div class="pct"><span id="pct">--</span><small>%</small></div>
+      </div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="controls">
+        <span class="state" id="state" data-state="off" role="status">off</span>
+        <button id="warm" class="btn small" hidden>☆ Warm up</button>
+        <button id="retry" class="btn small" hidden>↻ Retry</button>
+        <button id="styleme" class="btn small" disabled>♡ Style me</button>
+      </div>
+      <p class="advice" id="advice" hidden></p>
+      <div class="foot">
+        <span>An AI estimate of your outfit, not a judgment of you.</span>
+        <span id="status">camera off</span>
+      </div>
+    </section>
+    <p class="privacy">Frames are scored and never stored. The stylist only sees the scores, never the image.</p>
+  </main>
+  <canvas id="canvas" hidden></canvas>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
