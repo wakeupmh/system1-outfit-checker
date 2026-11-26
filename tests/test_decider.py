@@ -7,7 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from decider.app import MockEngine, build_app
+from decider.app import (
+    ChooseRequest,
+    DeciderEngine,
+    FactsRequest,
+    MockEngine,
+    build_app,
+    choose as run_choose,
+    facts as run_facts,
+)
 
 
 def jpeg(color="red", size=(640, 480)) -> str:
@@ -77,11 +85,55 @@ def test_invocations_with_an_occasion_returns_a_deterministic_choice():
     assert set(ca) == {"occasion", "pick", "confident", "margin", "looks", "ms", "model"}
     assert ca["occasion"] == "a dinner date" and ca["model"] == "mock"
     assert len(ca["looks"]) == 3 and len(pair.json()["looks"]) == 2
-    assert all(set(lk) == {"fit", "level", "probs", "facts"} for lk in ca["looks"])
+    assert all(set(lk) == {"fit", "level", "probs"} for lk in ca["looks"])
     best = max(range(3), key=lambda i: ca["looks"][i]["level"])
     assert ca["pick"] == best
     assert {k: v for k, v in ca.items() if k != "ms"} == {k: v for k, v in b.json().items() if k != "ms"}
     assert [lk["level"] for lk in ca["looks"]] != [lk["level"] for lk in run.json()["looks"]]
+
+
+def test_invocations_with_images_alone_returns_the_facts_of_each_photo_in_order():
+    with TestClient(build_app(MockEngine)) as client:
+        wait_ready(client)
+        body = {"images": [jpeg("red"), jpeg("blue")]}
+        a, b = client.post("/invocations", json=body), client.post("/invocations", json=body)
+        one = client.post("/invocations", json={"images": [jpeg("red")]})
+    assert a.status_code == b.status_code == one.status_code == 200
+    read, first = a.json(), one.json()
+    assert set(read) == {"facts", "ms", "model"} and read["model"] == "mock"
+    assert len(read["facts"]) == 2 and len(first["facts"]) == 1
+    assert all(set(f) == {"person", "formality", "palette", "shoes"} for f in read["facts"])
+    assert {k: v for k, v in read.items() if k != "ms"} == {k: v for k, v in b.json().items() if k != "ms"}
+    assert read["facts"][0] == first["facts"][0] and read["facts"][0] != read["facts"][1]
+
+
+class RecordingEngine(DeciderEngine):
+    """The real engine's request building, with no model: it records what it would be asked."""
+
+    def __init__(self):
+        self.model, self.device, self.calls = "rec", "none", []
+
+    def _evaluate(self, state, image_b64, questions):
+        self.calls.append((state, image_b64, tuple(questions)))
+        if "fit" in questions:
+            return {"fit": {"score": 1.0 + 0.5 * len(self.calls), "probabilities": {}}}
+        return {
+            "person": {"noul": 0.9}, "formality": {"choice": "casual"},
+            "palette": {"choice": "neutral"}, "shoes": {"noul": 0.5},
+        }
+
+
+def test_a_look_is_asked_its_fit_alone_in_its_own_pass_and_the_facts_are_a_separate_call():
+    engine = RecordingEngine()
+    choice = run_choose(engine, ChooseRequest("a dinner date", ("A", "B", "C")), threading.Lock())
+    assert [lk["level"] for lk in choice["looks"]] == [1.5, 2.0, 2.5] and choice["pick"] == 2
+    assert engine.calls == [("The plan: a dinner date.", image, ("fit",)) for image in "ABC"]
+
+    engine.calls.clear()
+    run_facts(engine, FactsRequest(("A", "B")), threading.Lock())
+    assert engine.calls == [
+        ("A webcam photo.", image, ("person", "formality", "palette", "shoes")) for image in "AB"
+    ]
 
 
 def test_an_image_body_still_returns_a_verdict_next_to_choices():
@@ -102,8 +154,13 @@ def test_an_image_body_still_returns_a_verdict_next_to_choices():
         {"occasion": "a party", "images": ["RED", "BLUE", "RED", "BLUE"]},
         {"occasion": "a party", "images": "RED"},
         {"occasion": "a party", "images": ["RED", "aGVsbG8="]},
+        {"occasion": None, "images": ["RED", "BLUE"]},
         {"occasion": "a party"},
-        {"images": ["RED", "BLUE"]},
+        {"images": []},
+        {"images": ["RED", "BLUE", "GREEN", "YELLOW"]},
+        {"images": "RED"},
+        {"images": [3]},
+        {"images": ["aGVsbG8="]},
     ],
 )
 def test_invocations_rejects_bad_choice_bodies(body):

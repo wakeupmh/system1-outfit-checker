@@ -1,4 +1,4 @@
-"""The outfit and occasion questions, their display calibration, and the answers-to-Verdict/Choice mappings."""
+"""The outfit and occasion questions, their display calibration, and the answers-to-Verdict/Choice/Facts mappings."""
 
 from __future__ import annotations
 
@@ -73,13 +73,18 @@ def occasion_fit(occasion: str) -> dict:
 
 
 def look_questions(occasion: str) -> dict:
-    """One look's request: the occasion fit plus the facts the stylist explains the pick with."""
-    return {"fit": occasion_fit(occasion), **{name: QUESTIONS[name] for name in FACT_NAMES}}
+    """One look's /choose request: the occasion fit alone. Time goes by pass through the model, so a second
+    question would cost a second pass per look. The facts come from FACT_QUESTIONS when they are needed."""
+    return {"fit": occasion_fit(occasion)}
 
 
 def look_state(occasion: str) -> str:
     return f"The plan: {occasion}."
 
+
+FRAME_STATE = "A webcam photo."
+FACT_QUESTIONS = {name: QUESTIONS[name] for name in FACT_NAMES}
+"""A /facts request: the four facts of a Verdict for one photo, with FRAME_STATE as its state."""
 
 LEVEL_LO = 0.5
 LEVEL_HI = 3.2
@@ -89,14 +94,18 @@ PERSON_MIN = 0.5
 CONFIDENT_MARGIN = 0.4
 
 
-def stretch(level: float, lo: float, hi: float, person: float) -> int:
-    if person < PERSON_MIN:
-        return 0
+def stretch(level: float, lo: float, hi: float) -> int:
     return max(0, min(100, round(100 * (level - lo) / (hi - lo))))
 
 
 def display_score(level: float, person: float) -> int:
-    return stretch(level, LEVEL_LO, LEVEL_HI, person)
+    if person < PERSON_MIN:
+        return 0
+    return stretch(level, LEVEL_LO, LEVEL_HI)
+
+
+def display_fit(level: float) -> int:
+    return stretch(level, FIT_LO, FIT_HI)
 
 
 def _level_and_probs(answer: dict) -> tuple[float, list[float]]:
@@ -127,16 +136,15 @@ def to_verdict(answers: dict, ms: float, model: str) -> dict:
 
 
 def to_choice(occasion: str, per_look_answers: list[dict], ms: float, model: str) -> dict:
-    """A look with no person in view ranks as level 0, like its fit; `pick` and `margin` follow that ranking."""
-    looks, ranks = [], []
+    """The highest level wins; a tie goes to the first look. /choose asks no `person` question, so a photo with
+    nobody in it ranks by its level alone."""
+    looks, levels = [], []
     for answers in per_look_answers:
         level, probs = _level_and_probs(answers["fit"])
-        person = float(answers["person"]["noul"])
-        looks.append({"fit": stretch(level, FIT_LO, FIT_HI, person), "level": round(level, 2),
-                      "probs": probs, "facts": _facts(answers)})
-        ranks.append(level if person >= PERSON_MIN else 0.0)
-    order = sorted(range(len(ranks)), key=lambda i: -ranks[i])
-    margin = round(ranks[order[0]] - ranks[order[1]], 2)
+        levels.append(level)
+        looks.append({"fit": display_fit(level), "level": round(level, 2), "probs": probs})
+    order = sorted(range(len(levels)), key=lambda i: -levels[i])
+    margin = round(levels[order[0]] - levels[order[1]], 2)
     return {
         "occasion": occasion,
         "pick": order[0],
@@ -146,3 +154,8 @@ def to_choice(occasion: str, per_look_answers: list[dict], ms: float, model: str
         "ms": round(ms, 1),
         "model": model,
     }
+
+
+def to_facts(per_image_answers: list[dict], ms: float, model: str) -> dict:
+    """One Facts per photo, in the request's order."""
+    return {"facts": [_facts(answers) for answers in per_image_answers], "ms": round(ms, 1), "model": model}
