@@ -71,6 +71,19 @@ casual pastel one (floral jacket, wide trousers). Different people, one photo ea
   `LEVEL_HI` 3.2 a good real outfit may never pass about 50 on the meter; recalibrate from presenter photos.
 - SigLIP2 reversed the pair, so it is not a fallback for the score.
 
+### The choose flow in a browser, real model, CPU
+
+`dev/rehearse.js` drives Escolher o look in Chromium against `DECIDER_MOCK=0 dev/run.sh`:
+
+| Occasion | Pick | Fits (tank / blazer / dress) | Margin | Model time |
+|---|---|---|---|---|
+| Jantar romântico | blazer | 34 / 100 / 60 | 0.81 | 34.1 s |
+| Corrida no parque | plain tank | 60 / 0 / 0 | 0.97 | 28.3 s |
+
+Through `curl` alone the same decisions take 13 to 16 s. With Chromium on the same 4 cores (camera stream
+and animations at about 70% of a core) the model got about 2.2 cores and took twice as long. A laptop with
+more cores, or Apple MPS (now picked automatically), should do better; not measured.
+
 ## Register
 
 | # | Unknown | Verdict | Evidence |

@@ -108,3 +108,67 @@ stylist and shows the advice.
 ## Ports for local runs
 
 decider 8080, front door 9000 (also serves `web/`), stylist 8081.
+
+## Choose a look (the talk's main demo)
+
+The page's "Escolher o look" mode picks one of 2 or 3 looks for an occasion. Measured on CPU
+(`bench/choice_eval.py`): asking one `choice` question over several images is position-biased, so each look
+is scored **alone** against the occasion and the highest wins. The same two looks swap places between
+"dinner date" and "morning run".
+
+### Questions
+
+`decider/questions.py` adds `occasion_fit(occasion)`, a `score` question with these levels, lowest first:
+
+1. "Wrong for it: would look out of place or be impractical."
+2. "Poor fit: wearable but clearly not what the occasion asks for."
+3. "Acceptable: fits the occasion without standing out."
+4. "Good fit: suits the occasion well."
+5. "Ideal: exactly what this occasion calls for."
+
+Instructions: "How well does the visible outfit suit {occasion}? Judge only the clothes, shoes and
+accessories, not the person." State: "The plan: {occasion}." Each look's request also carries `person`,
+`formality`, `palette` and `shoes`, so the stylist can explain the pick.
+
+Calibration: measured fit levels sit between about 0.9 and 2.3.
+`fit = clamp(round(100 * (level - FIT_LO) / (FIT_HI - FIT_LO)), 0, 100)` with `FIT_LO = 0.8`,
+`FIT_HI = 2.4`. When `person < 0.5`, `fit = 0`. The pick is the highest `level`. `margin` is the winner's
+level minus the runner-up's; `confident` is `margin >= 0.4` (measured margins: 0.32 to 1.41).
+
+### Choice
+
+```json
+{
+  "occasion": "jantar romântico",
+  "pick": 1,
+  "confident": true,
+  "margin": 0.88,
+  "looks": [
+    {"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02], "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13}},
+    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05], "facts": {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}}
+  ],
+  "ms": 5012.4,
+  "model": "StrandsAgents/strands-decider-E2B-gemma4-v2-2611"
+}
+```
+
+`pick` is a 0-based index into `looks`, which keeps the request's order.
+
+### Routes
+
+- Decider: `POST /invocations` with `{"occasion": "<1 to 120 chars>", "images": [2 or 3 base64 JPEGs]}`
+  returns a Choice. A body with `image` still returns a Verdict. 400 for anything else. The looks go
+  through the engine in one batched call where the engine supports it.
+- Front door: `POST /choose`, demo key, same body, returns the Choice. 503 cold or warming as for `/score`.
+- Stylist: `POST /style` also accepts `{"choice": <Choice>}` and returns `{"advice": ...}`: 2 to 4 short
+  sentences in Brazilian Portuguese saying why the pick suits the occasion, from the facts only.
+  `{"verdict": ...}` keeps working.
+- `DECIDER_MOCK=1` returns a deterministic Choice built from a hash of each image and the occasion.
+
+### Page
+
+Two modes on one page: **Termômetro** (the live meter, unchanged state machine) and **Escolher o look**.
+In Escolher o look, each of 2 or 3 slots takes a webcam snapshot or a file upload, the occasion comes
+from preset chips or free text, and "Decidir" posts to `/choose`. The result reveals each look's fit
+bar, marks the pick, and shows the margin. When `confident` is false the page says it is a tie and offers
+the stylist as tie-breaker. The UI text is Brazilian Portuguese.
