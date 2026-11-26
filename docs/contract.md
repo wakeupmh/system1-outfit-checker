@@ -131,7 +131,7 @@ accessories, not the person." State: "The plan: {occasion}."
 
 Each look's `/choose` request carries `fit` and `person`, nothing else. Time goes by pass through the model:
 one question is one pass and several questions are two, whichever they are. On the presenter's Mac a look
-costs 1.8 s asked for its fit alone and 2.1 s for the fit and `person`, against 4.15 s for all five questions
+costs 1.7 s asked for its fit alone and 2.1 s for the fit and `person`, against 3.3 s for all five questions
 (`docs/unknowns.md`, M9). The three other facts, `formality`, `palette` and `shoes`, come from `/facts`
 when they are needed.
 

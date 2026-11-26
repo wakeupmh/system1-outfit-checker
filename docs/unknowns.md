@@ -115,17 +115,18 @@ others from a quieter one, so that table overstates the gain. The next one is me
 What one look costs, timed in one process with the decider's own engine and questions, median of 3 runs after
 a warm-up run:
 
-| Questions in the request | Quiet Mac, 512x512 | Loaded Mac, 512x512 | Loaded Mac, 512x288 |
-|---|---|---|---|
-| The fit alone | 1.8 s | 3.18 s | 2.55 s |
-| The fit and `person` | 2.1 s | 4.16 s | |
-| All 5 | | 4.15 s | 4.50 s |
+| Questions in the request | Quiet Mac, 512x512 | Quiet Mac, 512x288 | Loaded Mac, 512x512 | Loaded Mac, 512x288 |
+|---|---|---|---|---|
+| The fit alone, one pass | 1.7 s | 1.7 s | 3.18 s | 2.55 s |
+| The fit and `person`, two passes | 2.1 s | 2.1 s | 4.16 s | |
+| All 5, two passes | 3.3 s | 3.9 s | 4.15 s | 4.50 s |
 
 - All of them give the same level, to 2 decimals.
-- Time goes by pass through the model, not by how many questions a pass carries. `person` beside the fit costs
-  0.3 s, and a smaller photo saves little: the fit alone still takes 2.41 s on 256 px photos and 2.66 s at
-  384 px. Smaller photos do change the level (blazer 2.68 at 512 px, 2.36 at 384 px, 2.06 at 256 px), so the
-  page keeps sending 512 px.
+- Time goes by pass through the model, and a pass with several questions costs more the more it carries: on a
+  quiet Mac `person` beside the fit costs 0.3 s and the three other facts 1.2 to 1.8 s more. Under memory
+  pressure the two-pass requests all cost the same, 4.15 s. A smaller photo saves little: the fit alone still
+  takes 2.41 s on 256 px photos and 2.66 s at 384 px. Smaller photos do change the level (blazer 2.68 at 512 px,
+  2.36 at 384 px, 2.06 at 256 px), so the page keeps sending 512 px.
 - The load takes 29 to 62 s once the weights are cached on a quiet Mac, about 88 s with the machine loaded. The
   first call after it takes 17 s (57 s loaded) and the next ones about 2 s, so the first decision in the browser
   costs about 18 s. New image shapes later cost nothing visible (5.0 s and 4.5 s).
@@ -170,7 +171,7 @@ for a dinner date (1.43 / 2.73 / 1.88, margin 0.85, in 7.4 s) and the plain tank
 | M6 | SigLIP2 in the browser can drive the meter alone | NOT VERIFIED | Ranks stock styled photos well, cannot separate no person from plain clothes, and reversed a real pair of phone photos |
 | M7 | Decider on CPU is fast enough for a live meter | NOT VERIFIED | 4.30 s at 2 threads, 2.62 s at 4. Fit: 0.94 s serial plus 6.7 s parallel, so about 2.0 s at Lambda's 6 vCPU (x86 estimate). On the Mac, 4.1 to 4.5 s per `/score` on MPS (7.4 to 7.8 s with the machine loaded), so the meter moves about every 4 s |
 | M8 | Decider E2B v2 runs on the presenter's Mac over Apple MPS | VERIFIED | MacBook Air M4, 16 GB: `decider ready: StrandsAgents/strands-decider-E2B-gemma4-v2-2611 on mps`, 10.73 GB resident against a 12.71 GB MPS limit, `REHEARSAL OK` with the CPU picks. Other apps must be closed: with Podman, Chrome and Cursor open, macOS ran out of memory at load and killed idle system daemons twice |
-| M9 | A 3-look decision on the Mac is fast enough for the talk | VERIFIED with the fit and `person` | 6.3 s of model time for 3 looks and 4.2 s for 2, 7.8 s in the browser, against 12.6 to 19.2 s with five questions. `/choose` asks the fit and `person`; `/facts` answers the other three facts when the stylist is asked (8.1 to 8.3 s for 3 photos). The first decision after a load is M10 |
+| M9 | A 3-look decision on the Mac is fast enough for the talk | VERIFIED with the fit and `person` | 6.3 s of model time for 3 looks and 4.2 s for 2, 7.8 s in the browser, against 12.6 to 19.2 s with five questions. Like for like on a quiet Mac, a look costs 2.1 s with the fit and `person` against 3.3 s with all five (3.9 s on webcam-shaped frames). `/choose` asks the fit and `person`; `/facts` answers the other three facts when the stylist is asked (8.1 to 8.3 s for 3 photos). The first decision after a load is M10 |
 | M10 | The first decision after a load | VERIFIED, slow once | 17 s for the first call on a quiet Mac, 57 s with it loaded, so the first decision in the browser takes 18.4 s (49.6 s with five questions). New image shapes afterwards cost nothing visible. Run one decision before the talk |
 | M11 | Asking only the fit would let a photo with nobody in it win | VERIFIED, so `/choose` also asks `person` | The eight stock photos with no outfit reach level 2.18 and fit 86 for a dinner date, and one ties with a real look for a morning run. With `person` six of them score 0. Two show a person and still rank by fit, as in the first design. Table above |
 | C1 | SageMaker scale-to-zero holds requests while at zero | NOT VERIFIED | "any attempts to invoke the endpoint will produce an error" [docs](https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling-zero-instances.html) |
