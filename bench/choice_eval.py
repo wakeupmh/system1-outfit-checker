@@ -1,8 +1,9 @@
-"""Can Decider choose a look for an occasion? Compares the two ways to ask it, on CPU.
+"""Can Decider choose a look for an occasion? Compares the two ways to ask it.
 
     python bench/choice_eval.py                    # stock trio: plain_tank, blazer, plaid_dress
     python bench/choice_eval.py --dir ~/looks      # 2 or 3 of your own looks, named after their files
     python bench/choice_eval.py --occasion "jantar romântico" --occasion "a job interview"
+    python bench/choice_eval.py --device mps       # where the talk runs, instead of the CPU reference
 
 Table 1 asks one `choice` question over all looks, in every order. When the winner moves with the
 order, the question is position-biased. Table 2 scores each look alone against the occasion, through
@@ -66,6 +67,7 @@ def main():
     ap.add_argument("--dir", help="folder with 2 or 3 photos of your own looks")
     ap.add_argument("--occasion", action="append", help="repeatable; defaults to a dinner date and a morning run")
     ap.add_argument("--threads", type=int, help="CPU threads, to estimate smaller machines")
+    ap.add_argument("--device", default="cpu", help="cpu (the reference numbers), mps or cuda")
     a = ap.parse_args()
     if a.threads:
         import torch
@@ -76,8 +78,9 @@ def main():
     names = list(images)
 
     t = time.perf_counter()
-    decider = DeciderEngine(a.model, "cpu")
-    print(f"model {a.model}  load {time.perf_counter() - t:.1f}s  looks {', '.join(names)}", flush=True)
+    decider = DeciderEngine(a.model, a.device)
+    print(f"model {a.model} on {decider.device}  load {time.perf_counter() - t:.1f}s  looks {', '.join(names)}",
+          flush=True)
 
     print("\n1. One choice question over all looks, every order")
     for occasion in occasions:

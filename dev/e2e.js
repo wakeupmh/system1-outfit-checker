@@ -177,11 +177,23 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   if (!reveal.pass.includes("0 tokens gerados")) throw new Error(`capô line: ${reveal.pass}`);
   await page.screenshot({ path: `${OUT}/e2e-look-reveal.png` });
 
+  // The Choice carries fits only. The facts come from /facts when the stylist is asked for.
+  const shownFacts = () => page.$$eval(".polaroid.scored .facts", (els) => els.map((el) => el.textContent.trim()));
+  const beforeFacts = await shownFacts();
+  if (beforeFacts.some(Boolean)) throw new Error(`facts shown before they were fetched: ${beforeFacts}`);
   const explainLabel = await page.textContent("#explain");
   if (explainLabel !== (tie ? "Pedir desempate ao estilista" : "Por quê?")) throw new Error(`explain button says ${explainLabel}`);
+  const factsReq = page.waitForRequest((r) => r.url().endsWith("/facts"));
+  const styleReq = page.waitForRequest((r) => r.url().endsWith("/style"));
   await page.click("#explain");
+  const factsBody = (await factsReq).postDataJSON();
+  const styleBody = (await styleReq).postDataJSON();
+  if (JSON.stringify(factsBody.images) !== JSON.stringify(body.images)) throw new Error("/facts did not get the photos /choose got");
+  if (!styleBody.choice.looks.every((l) => l.facts && typeof l.facts.person === "number")) throw new Error("stylist asked without the facts");
   await page.waitForSelector('#look-advice[data-tone="done"]', { timeout: 30000 });
-  log(`stylist (${explainLabel}):`, await page.textContent("#look-advice"));
+  const facts = await shownFacts();
+  if (facts.length !== 3 || facts.some((t) => !t)) throw new Error(`facts missing under a card after /facts: ${facts}`);
+  log(`stylist (${explainLabel}):`, await page.textContent("#look-advice"), "| facts under the cards:", facts.join(" | "));
 
   await page.click('.chip:has-text("Corrida no parque")');
   await page.waitForSelector('#mode-look[data-phase="editing"]', { timeout: 5000 });

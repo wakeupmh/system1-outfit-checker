@@ -30,7 +30,8 @@ CHOICE_INSTRUCTION = (
     "sapatos visíveis, qual look venceu e se a decisão foi confiante ou quase um empate. Responda em "
     "português do Brasil com 2 a 4 frases curtas explicando por que o look escolhido combina com a "
     "ocasião, usando apenas esses fatos. Se foi quase um empate, diga isso e dê um critério para "
-    "desempatar. Fale só das roupas, nunca do corpo, rosto ou aparência da pessoa."
+    "desempatar. Fale só das roupas, nunca do corpo, rosto ou aparência da pessoa. Se o traje e a paleta "
+    "de um look não vierem na mensagem, explique só pela adequação e pela margem, sem inventar esses detalhes."
 )
 
 CANNED_ADVICE = (
@@ -63,7 +64,8 @@ class Verdict(BaseModel):
 class Look(BaseModel):
     fit: int
     level: float
-    facts: Facts
+    # /choose asks only the fit; the page adds the facts from /facts before it asks for advice, when it can.
+    facts: Facts | None = None
 
 
 class Choice(BaseModel):
@@ -108,11 +110,12 @@ def describe_choice(choice: Choice) -> str:
         f"(margem {choice.margin:.2f} sobre o segundo; decisão {verdict}).",
     ]
     for i, look in enumerate(choice.looks):
-        f = look.facts
-        lines.append(
-            f"Look {i + 1}: adequação {look.fit}/100. Traje: {f.formality}. Paleta: {f.palette}. "
-            f"Pessoa visível: {f.person:.0%}. Sapatos visíveis: {f.shoes:.0%}."
-        )
+        line = f"Look {i + 1}: adequação {look.fit}/100."
+        if look.facts:
+            f = look.facts
+            line += (f" Traje: {f.formality}. Paleta: {f.palette}. "
+                     f"Pessoa visível: {f.person:.0%}. Sapatos visíveis: {f.shoes:.0%}.")
+        lines.append(line)
     return "\n".join(lines)
 
 

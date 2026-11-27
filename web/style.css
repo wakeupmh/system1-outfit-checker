@@ -154,7 +154,7 @@ body[data-mode="meter"] #mode-meter { display: grid; }
   box-shadow: var(--shadow);
   animation: pop .35s cubic-bezier(.2, 1.4, .4, 1) both;
 }
-.bubble[data-tone="loading"] { color: var(--muted); font-style: italic; }
+.bubble[data-tone="facts"], .bubble[data-tone="loading"] { color: var(--muted); font-style: italic; }
 .bubble[data-tone="error"] { background: var(--orange); }
 
 /* ---------- the stage: the live camera is the hero in both modes ---------- */

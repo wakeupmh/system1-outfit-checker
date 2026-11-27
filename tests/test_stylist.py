@@ -56,12 +56,17 @@ def test_the_agent_sees_only_the_verdict_facts_as_text():
     assert "base64" not in text and "143.2" not in text
 
 
+# What /choose returns: fits only. The page adds each look's facts from /facts before it asks for advice.
 CHOICE = {"occasion": "jantar romântico", "pick": 1, "confident": True, "margin": 0.88,
-          "looks": [{"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02],
-                     "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13}},
-                    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05],
-                     "facts": {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}}],
-          "ms": 5012.4, "model": "m"}
+          "looks": [{"fit": 18, "level": 1.09, "probs": [0.3, 0.4, 0.2, 0.08, 0.02]},
+                    {"fit": 73, "level": 1.97, "probs": [0.05, 0.2, 0.4, 0.3, 0.05]}],
+          "ms": 2512.4, "model": "m"}
+FACTS = [{"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13},
+         {"person": 0.79, "formality": "casual", "palette": "pastel", "shoes": 0.12}]
+
+
+def with_facts(choice=CHOICE):
+    return {**choice, "looks": [dict(look, facts=facts) for look, facts in zip(choice["looks"], FACTS)]}
 
 
 def test_mock_mode_answers_a_choice_in_portuguese_and_a_verdict_as_before(monkeypatch):
@@ -79,14 +84,25 @@ def test_mock_mode_answers_a_choice_in_portuguese_and_a_verdict_as_before(monkey
 def test_the_agent_sees_only_the_choice_facts_as_text():
     llm = RecordingLlm(model="rec")
     llm.seen = []
-    choice = {**CHOICE, "images": ["data:image/jpeg;base64,AAAA"]}
+    choice = {**with_facts(), "images": ["data:image/jpeg;base64,AAAA"]}
     assert client(llm).post("/style", json={"choice": choice}).json() == {"advice": "ok"}
     parts = [p for c in llm.seen for p in c.parts]
     assert parts and all(p.text and not p.inline_data for p in parts)
     text = " ".join(p.text for p in parts)
     for fact in ("jantar romântico", "look 2 de 2", "0.88", "18/100", "73/100", "athleisure", "pastel", "95%", "12%"):
         assert fact in text
-    assert "base64" not in text and "5012" not in text
+    assert "base64" not in text and "2512" not in text
+
+
+def test_a_choice_without_facts_is_explained_from_the_fits_and_the_margin_alone():
+    # /facts can fail on stage; the pick is already on screen and still deserves an explanation.
+    llm = RecordingLlm(model="rec")
+    llm.seen = []
+    assert client(llm).post("/style", json={"choice": CHOICE}).json() == {"advice": "ok"}
+    text = " ".join(p.text for c in llm.seen for p in c.parts)
+    for fact in ("jantar romântico", "look 2 de 2", "0.88", "18/100", "73/100"):
+        assert fact in text
+    assert "Traje" not in text and "Paleta" not in text and "Pessoa visível" not in text
 
 
 @pytest.mark.parametrize(
