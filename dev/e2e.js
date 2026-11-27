@@ -129,6 +129,9 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   if (await page.isDisabled("#decide")) throw new Error("DECIDIR disabled with 3 looks and an occasion");
   log("3 looks uploaded, occasion chip picked");
 
+  let factsCalls = 0;
+  page.on("request", (r) => { if (r.url().endsWith("/facts")) factsCalls++; });
+  const factsReq = page.waitForRequest((r) => r.url().endsWith("/facts"), { timeout: 30000 });
   const sent = page.waitForRequest((r) => r.url().endsWith("/choose"));
   await page.click("#decide");
   const body = (await sent).postDataJSON();
@@ -177,22 +180,21 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   if (!reveal.pass.includes("0 tokens gerados")) throw new Error(`capô line: ${reveal.pass}`);
   await page.screenshot({ path: `${OUT}/e2e-look-reveal.png` });
 
-  // The Choice carries fits only. The facts come from /facts when the stylist is asked for.
+  // The Choice carries fits only. Asking the stylist straight away fetches the facts then; the page shows them
+  // under the cards and reuses them for every later decision on the same photos.
   const shownFacts = () => page.$$eval(".polaroid.scored .facts", (els) => els.map((el) => el.textContent.trim()));
-  const beforeFacts = await shownFacts();
-  if (beforeFacts.some(Boolean)) throw new Error(`facts shown before they were fetched: ${beforeFacts}`);
+  if (factsCalls !== 0) throw new Error("/facts was called before the stylist was asked or the prefetch delay passed");
   const explainLabel = await page.textContent("#explain");
   if (explainLabel !== (tie ? "Pedir desempate ao estilista" : "Por quê?")) throw new Error(`explain button says ${explainLabel}`);
-  const factsReq = page.waitForRequest((r) => r.url().endsWith("/facts"));
   const styleReq = page.waitForRequest((r) => r.url().endsWith("/style"));
   await page.click("#explain");
   const factsBody = (await factsReq).postDataJSON();
-  const styleBody = (await styleReq).postDataJSON();
   if (JSON.stringify(factsBody.images) !== JSON.stringify(body.images)) throw new Error("/facts did not get the photos /choose got");
+  const styleBody = (await styleReq).postDataJSON();
   if (!styleBody.choice.looks.every((l) => l.facts && typeof l.facts.person === "number")) throw new Error("stylist asked without the facts");
   await page.waitForSelector('#look-advice[data-tone="done"]', { timeout: 30000 });
   const facts = await shownFacts();
-  if (facts.length !== 3 || facts.some((t) => !t)) throw new Error(`facts missing under a card after /facts: ${facts}`);
+  if (facts.length !== 3 || facts.some((t) => !t)) throw new Error(`facts missing under a card: ${facts}`);
   log(`stylist (${explainLabel}):`, await page.textContent("#look-advice"), "| facts under the cards:", facts.join(" | "));
 
   await page.click('.chip:has-text("Corrida no parque")');
@@ -201,6 +203,10 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   await page.click("#decide");
   await decided(page);
   const again = await page.evaluate(() => JSON.parse(document.getElementById("engine-json").textContent));
+  // Left on screen, the result gets its facts from the delayed prefetch, served from the cache: no new call.
+  await page.waitForFunction(() => [...document.querySelectorAll(".polaroid.scored .facts")].every((el) => el.textContent.trim()),
+    null, { timeout: 15000 });
+  if (factsCalls !== 1) throw new Error(`same photos, new occasion: expected 1 /facts call in total, saw ${factsCalls}`);
   const againMargin = await page.textContent("#margin");
   if (again.occasion !== "Corrida no parque" || !againMargin.includes(marginText(again))) {
     throw new Error(`second decision: ${again.occasion}, page margin ${againMargin}, Choice margin ${again.margin}`);
