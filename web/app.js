@@ -2,8 +2,8 @@
 // Termômetro: webcam -> front door -> decider, off -> starting -> cold -> warming -> live, plus paused and error.
 // Paused stops sending frames, so an idle GPU can scale back to zero.
 // Escolher o look: a reducer over {phase, slots, occasion, choice, facts, advice}; phase is editing -> thinking -> revealed | failed.
-// /choose asks each look only for its fit and whether a person is visible. The rest comes from /facts when the
-// stylist is asked for.
+// /choose asks each look only for its fit and whether a person is visible. The rest comes from /facts, fetched
+// once per set of photos: when the stylist is asked, or after a result has stayed on screen for a while.
 const CFG = window.OUTFIT_CONFIG || null;
 const MAX_SIDE = 512;
 const SMOOTH = 0.2;
@@ -282,6 +282,8 @@ const STEPS = {
   revealed: {
     ASK: (m) => (m.advice.status === "none" || m.advice.status === "done" || m.advice.status === "error"
       ? { ...m, advice: { status: m.facts ? "loading" : "facts", text: "" } } : m),
+    // Facts that arrived before anyone asked: shown under the cards, kept for the stylist.
+    PREFETCHED: (m, a) => (a.choice === m.choice && !m.facts ? { ...m, facts: a.facts } : m),
     // A failed /facts sends null: the stylist then explains from the fits and the margin alone.
     FACTS: (m, a) => (a.choice === m.choice && m.advice.status === "facts"
       ? { ...m, facts: a.facts, advice: { status: "loading", text: "" } } : m),
@@ -339,15 +341,33 @@ const coldMessage = (body) => body.state === "warming"
   ? "O modelo ainda está aquecendo. Tenta de novo em alguns segundos."
   : "O modelo está dormindo. Aqueça no Termômetro com a chave do apresentador.";
 
+// The decider answers one request at a time, so prefetching right after a reveal would make an immediate change
+// of occasion wait behind /facts. Prefetch only once the result has been on screen this long.
+const FACTS_PREFETCH_MS = 10000;
+// Facts depend on the photos, not the occasion, so one /facts call serves every decision on the same looks.
+// A failed call is forgotten, so the next ask retries it.
+let factsCache = { key: "", promise: null };
+function factsFor(images) {
+  const key = images.join("|");
+  if (factsCache.key !== key) {
+    const promise = api("POST", "/facts", { images }, {}, AbortSignal.timeout(CHOOSE_TIMEOUT_MS))
+      .then((res) => (res.status === 200 ? parseFacts(res.body, images.length) : null))
+      .catch(() => null);
+    factsCache = { key, promise };
+    promise.then((facts) => { if (!facts && factsCache.key === key) factsCache = { key: "", promise: null }; });
+  }
+  return factsCache.promise;
+}
+
 async function decide() {
   if (!dispatch({ type: "DECIDE" })) return;
   $("look-stage").scrollIntoView({ behavior: "smooth", block: "nearest" });
   thinkingClock();
   const { occasion, sent, slots } = look;
+  const images = sent.map((i) => slots[i].img);
   let res;
   try {
-    res = await api("POST", "/choose", { occasion: occasion.trim(), images: sent.map((i) => slots[i].img) },
-      {}, AbortSignal.timeout(CHOOSE_TIMEOUT_MS));
+    res = await api("POST", "/choose", { occasion: occasion.trim(), images }, {}, AbortSignal.timeout(CHOOSE_TIMEOUT_MS));
   } catch (e) {
     return dispatch({ type: "FAIL", error: e.name === "TimeoutError" ? "Demorou demais. Tenta de novo?" : "Front door fora do ar." });
   }
@@ -355,6 +375,11 @@ async function decide() {
   if (res.status !== 200) return dispatch({ type: "FAIL", error: res.body.error || `A decisão falhou (${res.status}).` });
   const choice = parseChoice(res.body, sent.length);
   dispatch(choice ? { type: "RESULT", choice } : { type: "FAIL", error: "Resposta inesperada do modelo." });
+  if (!choice) return;
+  setTimeout(() => {
+    if (look.choice !== choice) return;
+    factsFor(images).then((facts) => { if (facts) dispatch({ type: "PREFETCHED", choice, facts }); });
+  }, FACTS_PREFETCH_MS);
 }
 
 async function explain() {
@@ -363,13 +388,7 @@ async function explain() {
   const { sent, slots } = look;
   let { facts } = look;
   if (!facts) {
-    let res;
-    try {
-      res = await api("POST", "/facts", { images: sent.map((i) => slots[i].img) }, {}, AbortSignal.timeout(CHOOSE_TIMEOUT_MS));
-    } catch (e) {
-      res = { status: 0, body: {} };
-    }
-    facts = res.status === 200 ? parseFacts(res.body, sent.length) : null;
+    facts = await factsFor(sent.map((i) => slots[i].img));
     if (!dispatch({ type: "FACTS", choice, facts })) return;
   }
   // Without facts the stylist still explains, from the fits and the margin.
