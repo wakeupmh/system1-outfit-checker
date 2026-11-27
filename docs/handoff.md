@@ -13,7 +13,7 @@ live, and a Gemini stylist explains the pick. Done means all three are true:
 2. The same rehearsal passes against the deployed page with `BASE=<hosting url>` (Plan A).
 3. The presenter's own looks give the pick they expect, and the meter uses most of its 0 to 100 range.
 
-## Where things are (main at b0b9cc4)
+## Where things are (main at 83db326)
 
 | Part | Where | State |
 |---|---|---|
@@ -66,11 +66,11 @@ node dev/rehearse.js
 Check: `REHEARSAL OK`, and note both lines' seconds. Record them in `docs/unknowns.md` under the choose-flow
 timings, with the Mac model and chip.
 
-Decision: if one 3-look decision takes more than about 10 s, make it faster. `/choose` asks 5 questions per
-look (fit plus 4 facts for the stylist). Ask only the fit question in `/choose`, and fetch the facts when the
-page calls the stylist ("Por quê?" / "Pedir desempate"). Update `docs/contract.md` first, then
-`decider/questions.py`, `decider/app.py`, the stylist and `web/app.js`, with tests. Measured on CPU, one
-question per look took about 2.5 s against about 5 s.
+Done in PR #9 on a MacBook Air M4: `/choose` now asks each look only its fit and `person`, and `/facts` answers
+the other facts. A 3-look decision takes about 6 to 8 s on MPS. Keep `person` in `/choose`: asked for its fit
+alone, a photo with nobody in it can outrank a real outfit (a cats photo scored level 1.56 against a plain
+tank's 1.33). The page fetches the facts once per set of photos right after the first decision, so "Por quê?"
+and a change of occasion rarely wait for them.
 
 ### 2. The presenter's own looks
 
