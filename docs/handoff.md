@@ -99,7 +99,11 @@ Calibrate: real photos scored about one level below stock ones. Set `LEVEL_LO`/`
 
 ### 4. First deploy from the laptop
 
-Follow `docs/deploy.md`. Prefer the laptop for the first run, so errors are easy to read:
+Follow `docs/deploy.md`. Prefer the laptop for the first run, so errors are easy to read.
+
+Already checked without an account (C12 and C13 in `docs/unknowns.md`): the GPU decider image builds from
+`decider/` and serves every route, and the front door zip runs in the Lambda runtime (`dev/lambda_check.py`, in
+CI). What is left to learn here is AWS and Google themselves: quota, IAM, scale from zero, Firebase.
 
 ```bash
 cp infra/terraform.tfvars.example infra/terraform.tfvars   # gcp_project, gemini_api_key
