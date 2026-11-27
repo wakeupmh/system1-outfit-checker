@@ -1,7 +1,16 @@
 import pytest
 from strands_decider.core import Request
 
-from decider.questions import QUESTIONS, look_questions, look_state, to_choice, to_verdict
+from decider.questions import (
+    FACT_QUESTIONS,
+    FRAME_STATE,
+    QUESTIONS,
+    look_questions,
+    look_state,
+    to_choice,
+    to_facts,
+    to_verdict,
+)
 
 
 def answers(level=2.0, person=0.9, formality="casual", palette="earthy", shoes=0.3):
@@ -51,22 +60,39 @@ def test_verdict_shape():
     }
 
 
-def look(level=1.6, person=0.9, formality="casual", palette="neutral", shoes=0.5):
+def look(level=1.6, person=0.9):
+    """What /choose asks of one look: the fit, and whether a person is visible."""
+    return {
+        "fit": {"type": "score", "score": level, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.4, "3": 0.2, "4": 0.1}},
+        "person": {"type": "noul", "noul": person},
+    }
+
+
+def fact_answers(person=0.9, formality="casual", palette="neutral", shoes=0.5):
+    """What /facts asks of one photo."""
     a = answers(person=person, formality=formality, palette=palette, shoes=shoes)
     del a["outfit"]
-    a["fit"] = {"type": "score", "score": level, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.4, "3": 0.2, "4": 0.1}}
     return a
 
 
-def test_occasion_questions_are_a_valid_decider_request_matching_the_contract():
+def test_a_look_is_asked_its_fit_and_person_matching_the_contract():
     occasion = "a dinner date"
     req = Request.model_validate({"state": look_state(occasion), "images": [], "questions": look_questions(occasion)})
     q = {name: question.normalised() for name, question in req.questions.items()}
-    assert set(q) == {"fit", "person", "formality", "palette", "shoes"}
+    assert set(q) == {"fit", "person"}, "several questions are a second pass, so a look is asked no more than these"
     assert q["fit"].kind == "score" and len(q["fit"].options) == 5
     assert "a dinner date" in q["fit"].instructions
+    assert q["person"].kind == "noul" and q["person"].instructions == "Is a person with their clothes visible?"
     assert look_state(occasion) == "The plan: a dinner date."
+
+
+def test_facts_are_the_four_verdict_facts_without_the_score_matching_the_contract():
+    req = Request.model_validate({"state": FRAME_STATE, "images": [], "questions": FACT_QUESTIONS})
+    q = {name: question.normalised() for name, question in req.questions.items()}
+    assert set(q) == {"person", "formality", "palette", "shoes"}
     assert q["formality"].options == ("athleisure", "casual", "smart_casual", "formal", "party")
+    assert FACT_QUESTIONS == {name: QUESTIONS[name] for name in ("person", "formality", "palette", "shoes")}
+    assert FRAME_STATE == "A webcam photo."
 
 
 @pytest.mark.parametrize("level,fit", [(0.8, 0), (2.4, 100), (1.6, 50), (0.0, 0), (4.0, 100), (1.97, 73)])
@@ -84,13 +110,12 @@ def test_choice_picks_the_highest_level_and_keeps_the_request_order():
 
 
 def test_choice_shape():
-    choice = to_choice("x", [look(1.09, person=0.951, formality="athleisure", shoes=0.13), look(1.97)], 1.0, "m")
+    choice = to_choice("x", [look(1.09), look(1.97)], 1.0, "m")
     assert set(choice) == {"occasion", "pick", "confident", "margin", "looks", "ms", "model"}
     assert choice["looks"][0] == {
         "fit": 18,
         "level": 1.09,
         "probs": [0.1, 0.2, 0.4, 0.2, 0.1],
-        "facts": {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13},
     }
 
 
@@ -110,3 +135,20 @@ def test_a_look_with_no_person_fits_zero_and_cannot_win_on_level():
     choice = to_choice("x", [look(2.3, person=0.49), look(1.2)], 1.0, "m")
     assert choice["looks"][0]["fit"] == 0
     assert choice["pick"] == 1 and choice["margin"] == 1.2
+    assert all(set(lk) == {"fit", "level", "probs"} for lk in choice["looks"])
+
+
+def test_facts_report_each_photo_in_order():
+    read = to_facts(
+        [fact_answers(person=0.951, formality="athleisure", shoes=0.13), fact_answers(person=0.49, palette="bold")],
+        143.24,
+        "some/model",
+    )
+    assert read == {
+        "facts": [
+            {"person": 0.95, "formality": "athleisure", "palette": "neutral", "shoes": 0.13},
+            {"person": 0.49, "formality": "casual", "palette": "bold", "shoes": 0.5},
+        ],
+        "ms": 143.2,
+        "model": "some/model",
+    }

@@ -139,6 +139,7 @@ KEY_HEADERS = {"demo": "x-demo-key", "admin": "x-admin-key"}
 ROUTES = {
     ("POST", "/score"): ("demo", lambda b, body: b.invoke(body)),
     ("POST", "/choose"): ("demo", lambda b, body: b.invoke(body)),
+    ("POST", "/facts"): ("demo", lambda b, body: b.invoke(body)),
     ("GET", "/status"): ("demo", lambda b, body: (200, {"state": b.state()})),
     ("POST", "/warm"): ("admin", lambda b, body: (202, {"state": b.warm()})),
     ("POST", "/sleep"): ("admin", lambda b, body: (202, {"state": b.sleep()})),
